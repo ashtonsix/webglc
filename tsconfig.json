@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "lib": ["es2020", "DOM"],
+    "types": ["mocha"],
+    "target": "es2015",
+    "module": "es2015",
+    "newLine": "lf",
+    "moduleResolution": "node",
+    "strict": true,
+    "strictNullChecks": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "test/**/*.js", "modules.d.ts"]
+}
