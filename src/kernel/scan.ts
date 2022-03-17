@@ -244,7 +244,7 @@ export function scan(kernel: Kernel) {
         read: l0,
         scope,
         scope2: l1,
-        outputByteLength: pool.sizeBuffer(kernel.write, l1.length + 12), // +12?
+        outputByteLength: pool.sizeBuffer(kernel.write, l1.length + 12), // what is "+ 12" for?
         write: kernel.write,
       })
       for (let p of next.attribs) p.count *= 4
@@ -279,29 +279,3 @@ export function scan(kernel: Kernel) {
     return [init]
   }
 }
-
-/**
- * Prints something like this if called as intended:
- *
- *                                             16
- *                      8                       8
- *          4           4           4           4
- *    2     2     2     2     2     2     2     2
- * 1  1  1  1  1  1  1  1  1  1  1  1  1  1  1  1
- *
- *                                             16
- *                      8                       0
- *          4           0           4           8
- *    2     0     2     4     2     8     2    12
- * 1  0  1  2  1  4  1  6  1  8  1 10  1 12  1 14
- * 1  2  3  4  5  6  7  8  9 10 11 12 13 14 15  0
- **/
-// function debugLayers(layers: number[][]) {
-//   let max = Math.max(...layers.map((l) => l.length))
-//   let pad = Math.ceil(Math.log10(Math.max(...layers.flat(3)))) + 1
-//   let slayers = layers.map((l) =>
-//     l.map((ll) => (ll + '').padStart(pad * Math.ceil(max / l.length))).join('')
-//   )
-//   pad = Math.max(...slayers.map((l) => l.length))
-//   for (let l of slayers) console.log(l.padStart(pad))
-// }

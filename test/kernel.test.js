@@ -1,7 +1,10 @@
 import {format as f, kernel, buffer, range, gpu} from '../dist/index.js'
 import {log, assert} from './testUtils.js'
 
-afterEach(() => gpu.freeAll())
+afterEach(() => {
+  for (let b of gpu.buffers) b.free()
+  gpu.pool.clear()
+})
 
 let fparticle = {
   position: f.vec2,
@@ -148,7 +151,7 @@ describe('scan', () => {
   })
 })
 
-describe('filter', () => {
+describe('filtro', () => {
   it('keeps odds', async () => {
     let keepOdd = kernel(f.int, f.int)`
       void filtro(int i) {
@@ -176,6 +179,7 @@ describe('filter', () => {
     let bfiltered = await range(bdata.length).filtro(keepOdd, bdata)
     assert.equal(await bfiltered.read(), [1, 3, 5, 7, -1, -1, -1, -1])
   })
+  // TODO: investigate intermittent errors here
   it('keeps odds (longer list)', async () => {
     let keepOdd = kernel(f.int, f.int)`
       void filtro(int i) {

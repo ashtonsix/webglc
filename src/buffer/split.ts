@@ -24,6 +24,9 @@ export async function split<F extends ComplexFormat>(
       split4: kernel(format.uvec4, format.uvec4)`void map(int i) { write(read(i)); }`,
     }
   }
+  // NOTE: no need to acquire a texture once the vertex array optimisation is done
+  await buffer.acquire('gl')
+  await buffer.acquire('tex')
   let result = {} as {[x: string]: Buffer<Format>}
   for (let a of buffer.attribs) {
     let f = buffer.format[a.name!]
@@ -34,8 +37,6 @@ export async function split<F extends ComplexFormat>(
     buf.byteLength = buffer.byteLength
     buf.attribs = [{...a, name: null}]
     let kern = splitKernels[('split' + f.components) as keyof typeof splitKernels]
-    // TODO: don't create new texture for each draw call
-    // NOTE: the planned vertex array optimisation supercedes this TODO
     buf = await range(buf.length).map(kern as any, buf as any)
     buf.format = f
     buf.attribs[0].format = f

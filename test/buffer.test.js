@@ -1,7 +1,10 @@
-import {format as f, kernel, buffer, range, gpu} from '../dist/index.js'
+import {format as f, buffer, gpu} from '../dist/index.js'
 import {log, assert} from './testUtils.js'
 
-afterEach(() => gpu.freeAll())
+afterEach(() => {
+  for (let b of gpu.buffers) b.free()
+  gpu.pool.clear()
+})
 
 let fparticle = {
   position: f.vec2,

@@ -1,4 +1,4 @@
-import {Format, formatIterator, formatQuery} from '../format'
+import format, {Format, formatIterator, formatQuery} from '../format'
 import {KernelStruct} from './kernel'
 import {SourceFragmentStruct} from './parse'
 
@@ -50,7 +50,11 @@ export function generateProgramModel(
 
   let struct: ProgramModel = {
     attribCount: fit.read.length,
-    samplers: {read: !!kernel.read, scope: !!kernel.scope, scope2: !!kernel.scope2},
+    samplers: {
+      read: !!kernel.read && kernel.read !== format.null,
+      scope: !!kernel.scope && kernel.scope !== format.null,
+      scope2: !!kernel.scope2,
+    },
     formatRegisters: [] as Format[],
     identities: [] as {format: Format; attrib: string | null; value: string}[],
     readFunctions: [] as {

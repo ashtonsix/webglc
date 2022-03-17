@@ -1,12 +1,12 @@
 {
   "name": "webglc",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "GPU-accelerated compute for web browsers",
   "author": "Ashton Six <me@ashtonsix.com>",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/energeticsproject/webglc.git"
+    "url": "https://github.com/ashtonsix/webglc.git"
   },
   "main": "dist/index.cjs",
   "type": "module",
@@ -27,6 +27,7 @@
     "@rollup/plugin-commonjs": "^15.1.0",
     "@rollup/plugin-node-resolve": "^9.0.0",
     "@types/mocha": "^9.1.0",
+    "@types/three138": "npm:@types/three@0.138.x",
     "karma": "^6.3.16",
     "karma-chrome-launcher": "^3.1.0",
     "karma-edge-launcher": "^0.4.2",
@@ -37,6 +38,9 @@
     "rollup": "^2.52.2",
     "rollup-plugin-polyfill-node": "^0.8.0",
     "rollup-plugin-typescript2": "^0.30.0",
+    "three137": "npm:three@0.137.x",
+    "three138": "npm:three@0.138.x",
+    "three139": "npm:three@0.139.x",
     "typescript": "^4.5.4"
   }
 }

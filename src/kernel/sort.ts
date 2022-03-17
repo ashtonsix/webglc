@@ -18,9 +18,9 @@ export function sort(kernel: Kernel) {
       void map(int i) {
         write(i, i + 1, i + 2, i + 3);
       }`),
-    null,
+    format.null,
     format.int,
-    null
+    format.null
   )
   let before = `ivec4 sorted = read_s_scope2(i, f_ivec4); read_s_scope2(i);`
   let [fragB] = extractSourceFragments(before)

@@ -21,3 +21,6 @@ function prime(gte: number) {
   }
   return primes[primes.length - 1]
 }
+
+// selecting a bucket (4 integers per bucket):
+// prime * groupId + (random() % prime);

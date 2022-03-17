@@ -1,6 +1,6 @@
 import {Buffer} from './buffer/buffer'
 import {Kernel} from './kernel/kernel'
-import format, {ComplexFormat, Format} from './format'
+import format, {ComplexFormat, Format, Null} from './format'
 
 export class Range {
   length: number
@@ -8,9 +8,9 @@ export class Range {
     this.length = end - start
   }
   async map<
-    R extends Format | ComplexFormat | null,
+    R extends Format | ComplexFormat | Null,
     W extends Format | ComplexFormat,
-    S extends ComplexFormat | null
+    S extends ComplexFormat | Null
   >(
     kernel: Kernel<R, W, S>,
     ...input: R extends Format | ComplexFormat
@@ -18,16 +18,16 @@ export class Range {
         ? [read: Buffer<R>, scope: Buffer<S>]
         : [read: Buffer<R>]
       : S extends ComplexFormat
-      ? [read: R, scope: Buffer<S>]
+      ? [scope: Buffer<S>]
       : []
   ): Promise<Buffer<W>> {
     let r = await kernel.invoke(this, 'map', input[0] ?? null, input[1] ?? null, [])
     return r[0] as Buffer<W>
   }
   filtro<
-    R extends Format | ComplexFormat | null,
+    R extends Format | ComplexFormat | Null,
     W extends typeof format.int,
-    S extends ComplexFormat | null
+    S extends ComplexFormat | Null
   >(
     kernel: Kernel<R, W, S>,
     ...input: R extends Format | ComplexFormat
@@ -35,13 +35,13 @@ export class Range {
         ? [read: Buffer<R>, scope: Buffer<S>]
         : [read: Buffer<R>]
       : S extends ComplexFormat
-      ? [read: R, scope: Buffer<S>]
+      ? [scope: Buffer<S>]
       : []
   ): Promise<Buffer<W>>
   filtro<
-    R extends Format | ComplexFormat | null,
+    R extends Format | ComplexFormat | Null,
     W extends typeof format.int,
-    S extends ComplexFormat | null,
+    S extends ComplexFormat | Null,
     F extends 'length'
   >(
     kernel: Kernel<R, W, S>,
@@ -50,7 +50,7 @@ export class Range {
         ? [read: Buffer<R>, scope: Buffer<S>, flag: F]
         : [read: Buffer<R>, flag: F]
       : S extends ComplexFormat
-      ? [read: R, scope: Buffer<S>, flag: F]
+      ? [scope: Buffer<S>, flag: F]
       : [flag: F]
   ): Promise<[Buffer<W>, Buffer<typeof format.int>]>
   async filtro(kernel: Kernel, ...buffersAndFlags: any[]) {
@@ -65,9 +65,9 @@ export class Range {
     throw new Error(`Did you mean to call ".filtro()"?`)
   }
   group<
-    R extends Format | ComplexFormat | null,
+    R extends Format | ComplexFormat | Null,
     W extends typeof format.int,
-    S extends ComplexFormat | null
+    S extends ComplexFormat | Null
   >(
     kernel: Kernel<R, W, S>,
     ...input: R extends Format | ComplexFormat
@@ -75,13 +75,13 @@ export class Range {
         ? [read: Buffer<R>, scope: Buffer<S>]
         : [read: Buffer<R>]
       : S extends ComplexFormat
-      ? [read: R, scope: Buffer<S>]
+      ? [scope: Buffer<S>]
       : []
   ): Promise<Buffer<W>>
   group<
-    R extends Format | ComplexFormat | null,
+    R extends Format | ComplexFormat | Null,
     W extends typeof format.int,
-    S extends ComplexFormat | null,
+    S extends ComplexFormat | Null,
     F0 extends 'start' | 'length' | 'overflow'
   >(
     kernel: Kernel<R, W, S>,
@@ -90,13 +90,13 @@ export class Range {
         ? [read: Buffer<R>, scope: Buffer<S>, flag_0: F0]
         : [read: Buffer<R>, flag_0: F0]
       : S extends ComplexFormat
-      ? [read: R, scope: Buffer<S>, flag_0: F0]
+      ? [scope: Buffer<S>, flag_0: F0]
       : [flag_0: F0]
   ): Promise<[Buffer<W>, Buffer<typeof format.int>]>
   group<
-    R extends Format | ComplexFormat | null,
+    R extends Format | ComplexFormat | Null,
     W extends typeof format.int,
-    S extends ComplexFormat | null,
+    S extends ComplexFormat | Null,
     F0 extends 'start' | 'length' | 'overflow',
     F1 extends 'start' | 'length' | 'overflow'
   >(
@@ -106,13 +106,13 @@ export class Range {
         ? [read: Buffer<R>, scope: Buffer<S>, flag_0: F0, flag_1: F1]
         : [read: Buffer<R>, flag_0: F0, flag_1: F1]
       : S extends ComplexFormat
-      ? [read: R, scope: Buffer<S>, flag_0: F0, flag_1: F1]
+      ? [scope: Buffer<S>, flag_0: F0, flag_1: F1]
       : [flag_0: F0, flag_1: F1]
   ): Promise<[Buffer<W>, Buffer<typeof format.int>, Buffer<typeof format.int>]>
   group<
-    R extends Format | ComplexFormat | null,
+    R extends Format | ComplexFormat | Null,
     W extends typeof format.int,
-    S extends ComplexFormat | null,
+    S extends ComplexFormat | Null,
     F0 extends 'start' | 'length' | 'overflow',
     F1 extends 'start' | 'length' | 'overflow',
     F2 extends 'start' | 'length' | 'overflow'
@@ -123,7 +123,7 @@ export class Range {
         ? [read: Buffer<R>, scope: Buffer<S>, flag_0: F0, flag_1: F1, flag_2: F2]
         : [read: Buffer<R>, flag_0: F0, flag_1: F1, flag_2: F2]
       : S extends ComplexFormat
-      ? [read: R, scope: Buffer<S>, flag_0: F0, flag_1: F1, flag_2: F2]
+      ? [scope: Buffer<S>, flag_0: F0, flag_1: F1, flag_2: F2]
       : [flag_0: F0, flag_1: F1, flag_2: F2]
   ): Promise<
     [Buffer<W>, Buffer<typeof format.int>, Buffer<typeof format.int>, Buffer<typeof format.int>]
@@ -137,9 +137,9 @@ export class Range {
     return buf
   }
   async sort<
-    R extends Format | ComplexFormat | null,
+    R extends Format | ComplexFormat | Null,
     W extends typeof format.int,
-    S extends ComplexFormat | null
+    S extends ComplexFormat | Null
   >(
     kernel: Kernel<R, W, S>,
     ...input: R extends Format | ComplexFormat
@@ -147,20 +147,20 @@ export class Range {
         ? [read: Buffer<R>, scope: Buffer<S>]
         : [read: Buffer<R>]
       : S extends ComplexFormat
-      ? [read: R, scope: Buffer<S>]
+      ? [scope: Buffer<S>]
       : []
   ): Promise<Buffer<W>> {
     let r = await kernel.invoke(this, 'sort', input[0] ?? null, input[1] ?? null, [])
     return r[0] as Buffer<W>
   }
-  async reduce<R extends Format | ComplexFormat, W extends R, S extends ComplexFormat | null>(
+  async reduce<R extends Format | ComplexFormat, W extends R, S extends ComplexFormat | Null>(
     kernel: Kernel<R, W, S>,
     ...input: S extends ComplexFormat ? [read: Buffer<R>, scope: Buffer<S>] : [read: Buffer<R>]
   ): Promise<Buffer<W>> {
     let r = await kernel.invoke(this, 'reduce', input[0] ?? null, input[1] ?? null, [])
     return r[0] as Buffer<W>
   }
-  async scan<R extends Format | ComplexFormat, W extends R, S extends ComplexFormat | null>(
+  async scan<R extends Format | ComplexFormat, W extends R, S extends ComplexFormat | Null>(
     kernel: Kernel<R, W, S>,
     ...input: S extends ComplexFormat ? [read: Buffer<R>, scope: Buffer<S>] : [read: Buffer<R>]
   ): Promise<Buffer<W>> {

@@ -17,10 +17,36 @@ export interface SourceFragmentStruct {
   write: SourceFragment[]
 }
 
-class SourceError extends Error {
-  constructor(message: string, public fragment?: SourceFragment) {
-    super(message)
+export function logSourceError(
+  message: string,
+  src?: string,
+  fragmentOrLine?: number | SourceFragment
+) {
+  if (!src || !fragmentOrLine) return console.error(message)
+  message += '\n\n'
+
+  let lines = src.split('\n')
+  let line = fragmentOrLine as number
+  if (typeof fragmentOrLine !== 'number') {
+    let cursor = 0
+    for (let i = 0; i < lines.length; i++) {
+      cursor += lines[i].length
+      if (cursor >= fragmentOrLine.start) {
+        line = i
+        break
+      }
+    }
   }
+  for (let i = Math.max(0, line - 2); i <= Math.min(lines.length - 1, line + 3); i++) {
+    message += `${i === line ? '>' : ' '} | ${lines[i]}\n`
+    if (i === line) {
+      let underscoreStart = lines[line].length - lines[line].trimStart().length
+      let underscoreEnd = lines[line].length
+      message += `  | ` + ' '.repeat(underscoreStart).padEnd(underscoreEnd, '^') + '\n'
+    }
+  }
+
+  console.error(message)
 }
 
 // naive parsing, fails for some edge cases but deemed acceptable
@@ -49,7 +75,7 @@ export function extractSourceFragments(src: string) {
       })
       let fragment = sourceFragments.entrypoint.slice(-1)[0]
       if (m.returnType !== 'void') {
-        throw new SourceError(`Expected return type to be "void"`, fragment)
+        logSourceError(`Expected return type to be "void"`, src, fragment)
       }
     }
   }
@@ -75,7 +101,7 @@ export function extractSourceFragments(src: string) {
         let expected = `Expected qualifier to be "const"`
         let found = `found ${qualifier ? `"${qualifier}"` : 'no qualifier'}`
         let fragment = sourceFragments.identity.slice(-1)[0]
-        throw new SourceError(`${expected}, but ${found}`, fragment)
+        logSourceError(`${expected}, but ${found}`, src, fragment)
       }
     }
   }
@@ -124,17 +150,16 @@ export function validateSourceFragments(
     read: formatIterator(kernel.read, kernel.scope),
     write: formatIterator(kernel.write),
   }
-  let errors = [] as SourceError[]
   one_entrypoint: {
     if (sourceFragments.entrypoint.length !== 1) {
       let expected = `Expected to find exactly 1 of ${allowedEntrypoints.join(', ')}.`
-      let found = ` Found ${sourceFragments.entrypoint.map((m) => m.key).join(', ') || 'none'}.`
-      errors.push(new SourceError(`${expected}${found}`))
+      let found = ` But found ${sourceFragments.entrypoint.length}.`
+      logSourceError(`${expected}${found}`)
     }
   }
   arguments: {
     let validArguments = (() => {
-      switch (sourceFragments.entrypoint[0].key) {
+      switch (sourceFragments.entrypoint[0]?.key) {
         case 'map':
         case 'filtro':
         case 'reduce':
@@ -145,14 +170,14 @@ export function validateSourceFragments(
         case 'sort':
           return ['int i, int j']
         default:
-          return []
+          return ['int i']
       }
     })()
     let pValidArguments = false
     for (let ea of validArguments) {
       let e = ea.split(',')
-      let f = sourceFragments.entrypoint[0].value
-      if (e.length !== f.length) continue
+      let f = sourceFragments.entrypoint[0]?.value
+      if (!f || e.length !== f.length) continue
       for (let i in e) {
         let etype = e[i].split(' ')[0].trim()
         let ftype = f[i].split(' ')[0].trim()
@@ -163,32 +188,29 @@ export function validateSourceFragments(
     if (!pValidArguments) {
       let va = validArguments.map((a) => `"${a}"`).join(' or ')
       let expected = `Expected arguments to be in format ${va}`
-      let found = `Found "${sourceFragments.entrypoint[0].value.join(', ')}"`
-      errors.push(new SourceError(`${expected}. ${found}`, sourceFragments.entrypoint[0]))
+      let found = `Found "${sourceFragments.entrypoint[0]?.value.join(', ')}"`
+      logSourceError(`${expected}. ${found}`, kernel.src, sourceFragments.entrypoint[0])
     }
   }
   format: {
-    switch (sourceFragments.entrypoint[0].key) {
+    switch (sourceFragments.entrypoint[0]?.key) {
       case 'filtro':
       case 'group':
       case 'sort':
         if (kernel.write !== format.int) {
-          errors.push(
-            new SourceError(
-              `Write format for "${sourceFragments.entrypoint[0].key}" must be f.int`,
-              sourceFragments.entrypoint[0]
-            )
+          logSourceError(
+            `Write format for "${sourceFragments.entrypoint[0]?.key}" must be f.int`,
+            kernel.src,
+            sourceFragments.entrypoint[0]
           )
         }
       case 'reduce':
       case 'scan':
         if (JSON.stringify(kernel.read) !== JSON.stringify(kernel.write)) {
-          console.log(kernel)
-          errors.push(
-            new SourceError(
-              `Read and write format must match for "${sourceFragments.entrypoint[0].key}"`,
-              sourceFragments.entrypoint[0]
-            )
+          logSourceError(
+            `Read and write format must match for "${sourceFragments.entrypoint[0]?.key}"`,
+            kernel.src,
+            sourceFragments.entrypoint[0]
           )
         }
     }
@@ -197,7 +219,7 @@ export function validateSourceFragments(
     let seen = new Set()
     for (let {name} of fit.read) {
       if (seen.has(name)) {
-        errors.push(new SourceError(`Key conflict between read and scope format on "${name}"`))
+        logSourceError(`Key conflict between read and scope format on "${name}"`)
       }
       seen.add(name)
     }
@@ -209,60 +231,59 @@ export function validateSourceFragments(
           // prettier-ignore
           let reason = f.key
             ? `"${f.key}" is missing from the ${type} format`
-            : fit[type].length ? `Format is complex, key is required` : `Format was not provided`
-          errors.push(new SourceError(`Cannot ${type}. ${reason}`, f))
+            : fit[type].length ? `the format is complex and a key is required` : `no format was provided`
+          logSourceError(`Cannot ${type} ${f.key}, because ${reason}`, kernel.src, f)
         }
       }
     }
   }
   read_typecast: {
     for (let read of sourceFragments.read) {
-      let native = fit.read.get(read.key)!
-      let request = formatQuery({name: read.value[1] ?? native.name})[0]
-      let batchsize = request.components / native.components
-      if (native.base !== request.base || ![1, 2, 4].includes(batchsize)) {
-        errors.push(
-          new SourceError(
-            `Cannot read ${native.name} as ${request.name}, the formats are incompatiable`,
-            read
-          )
+      let native = fit.read.get(read.key)
+      let request = formatQuery({name: read.value[1] ?? native?.name})[0]
+      let batchsize = native ? request.components / native.components : 0
+      if (native?.base !== request.base || ![1, 2, 4].includes(batchsize)) {
+        logSourceError(
+          `Cannot read ${read.key} as ${request.name}, because the format is incompatiable`,
+          kernel.src,
+          read
         )
       }
     }
   }
   write_batchsize: {
     let batchsize = sourceFragments.write[0].value.length
-    if (sourceFragments.entrypoint[0].key === 'reduce' && batchsize > 1) {
-      errors.push(
-        new SourceError(`Write batch size must be "1" for reduce.`, sourceFragments.write[0])
+    if (sourceFragments.entrypoint[0]?.key === 'reduce' && batchsize > 1) {
+      logSourceError(
+        `Write batch size must be "1" for reduce.`,
+        kernel.src,
+        sourceFragments.write[0]
       )
     }
     if (![1, 2, 4].includes(batchsize)) {
-      errors.push(
-        new SourceError(
-          `Expected write batch size to be 1, 2 or 4. Got ${batchsize}.`,
-          sourceFragments.write[0]
-        )
+      logSourceError(
+        `Expected write batch size to be 1, 2 or 4. Got ${batchsize}.`,
+        kernel.src,
+        sourceFragments.write[0]
       )
     }
     for (let w of sourceFragments.write) {
       if (batchsize !== w.value.length) {
         let found = `Found "${batchsize}" and "${w.value.length}"`
-        errors.push(new SourceError(`Write batch size must be consistent. ${found}`, w))
+        logSourceError(`Write batch size must be consistent. ${found}`, kernel.src, w)
       }
     }
   }
   write_comprehensive: {
     if (!sourceFragments.write.length) {
-      errors.push(new SourceError(`Must write something`))
+      logSourceError(`Must write something`)
     }
     let remaining = new Set(fit.write.map((w) => w.name))
     for (let f of sourceFragments.write) remaining.delete(f.key)
     let re = Array.from(remaining)
     if (re.length) {
       let e = `Must write something to all keys in write format`
-      errors.push(new SourceError(`${e}. ${re.map((r) => JSON.stringify(r))} missing`))
+      logSourceError(`${e}. ${re.map((r) => JSON.stringify(r))} missing`)
     }
   }
-  if (errors.length) throw errors
 }

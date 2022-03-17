@@ -4,6 +4,7 @@ import {buffer, Buffer} from '../buffer/buffer'
 import {Format, ComplexFormat} from '../format'
 import {Program, trimLeadingSpace} from './kernel'
 import * as template from './template'
+import {logSourceError} from './parse'
 
 export function finishCompileParallel(programs: Program[]) {
   programs = programs.filter((p) => !p.gl)
@@ -35,13 +36,28 @@ export function finishCompileParallel(programs: Program[]) {
   for (const p of programs) {
     gl.linkProgram(p.gl!)
   }
+  let matches = new Set<string>()
   for (const i in programs) {
     let p = programs[i]
     if (!gl.getProgramParameter(p.gl!, gl.LINK_STATUS)) {
-      console.log(p.vs)
-      console.error('Link failed: ' + gl.getProgramInfoLog(p.gl!))
-      console.error('vs info-log: ' + gl.getShaderInfoLog(vsca[i]!))
-      console.error('fs info-log: ' + gl.getShaderInfoLog(fsca[i]!))
+      let ve = gl.getShaderInfoLog(vsca[i]!)!.matchAll(/ERROR: \d+:(\d+):(.+)/g)
+      let fe = gl.getShaderInfoLog(fsca[i]!)!.matchAll(/ERROR: \d+:(\d+):(.+)/g)
+      let vg = {} as {[x: string]: string[]}
+      let fg = {} as {[x: string]: string[]}
+      for (let [match, line, message] of ve) {
+        if (matches.has(match)) continue
+        if (!vg[line]) vg[line] = []
+        vg[line].push(message.trim())
+        matches.add(match)
+      }
+      for (let [match, line, message] of fe) {
+        if (matches.has(match)) continue
+        if (!fg[line]) fg[line] = []
+        fg[line].push(message.trim())
+        matches.add(match)
+      }
+      for (let line in vg) logSourceError(vg[line].join('\n'), p.vs, +line - 1)
+      for (let line in fg) logSourceError(fg[line].join('\n'), p.fs, +line - 1)
     }
   }
 }
@@ -114,17 +130,9 @@ export function readRedIntegerTex(
   let width = 2 ** Math.ceil(Math.log2(pixels ** 0.5))
   let height = pixels / width
   if (!buf) buf = pool.getBuffer(pixels * 4)
-  let fb = gl.createFramebuffer()!
-  gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, gpu.fb)
   let attach = gl.COLOR_ATTACHMENT0
   gl.framebufferTexture2D(gl.FRAMEBUFFER, attach, gl.TEXTURE_2D, tex, 0)
-  if (gpu.support.RED_INTEGER) {
-    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, buf!)
-    gl.readPixels(0, 0, width, height, gl.RED_INTEGER, uint ? gl.UNSIGNED_INT : gl.INT, 0)
-    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null)
-    gl.deleteFramebuffer(fb)
-    return
-  }
   if (!readRedIntegerProgram) {
     let program = new Program(
       trimLeadingSpace(`
@@ -145,14 +153,14 @@ export function readRedIntegerTex(
   gl.bindBuffer(gl.PIXEL_PACK_BUFFER, tmp)
   gl.readPixels(0, 0, width, height, gl.RGBA_INTEGER, uint ? gl.UNSIGNED_INT : gl.INT, 0)
   gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null)
-  gl.deleteFramebuffer(fb)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 
   gl.bindBuffer(gl.ARRAY_BUFFER, tmp)
   let va = gl.createVertexArray()
   let iloc = gl.getAttribLocation(readRedIntegerProgram, 'i')
   gl.bindVertexArray(va)
   gl.enableVertexAttribArray(iloc)
-  gl.vertexAttribIPointer(iloc, 1, gl.INT, 16, 0) // important! stride = 16 bytes
+  gl.vertexAttribIPointer(iloc, 1, gl.INT, 16, 0) // stride = 16 bytes (every 4th integer)
 
   let tf = gl.createTransformFeedback()
   gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf)

@@ -1,4 +1,3 @@
-import {range} from '../range'
 import {Format, ComplexFormat, ParsedFormat, formatIterator, MergeFormats} from '../format'
 import {gpu} from '../gpu'
 import {copy} from './copy'
@@ -9,94 +8,13 @@ import {slice} from './slice'
 import {split} from './split'
 import {read} from './read'
 import {write, writeSync} from './write'
-
-export class BufferPool {
-  bufferPool = {} as {[sizeAndUsage: string]: WebGLBuffer[]}
-  bufferPoolIndex = new Map<WebGLBuffer, string>()
-  texturePool = {} as {[sizeAndFormat: string]: WebGLTexture[]}
-  texturePoolIndex = new Map<WebGLTexture, {key: string; width: number; height: number}>()
-  sizeBuffer(format: Format | ComplexFormat | null, count: number) {
-    let components = 0
-    for (let f of formatIterator(format)) components += f.format.components
-    count = Math.ceil(count / 4) * 4
-    let full = 2 ** Math.ceil(Math.log2(count * components)) * 4
-    return full
-  }
-  getBuffer(size: number, usage = gpu.gl.DYNAMIC_DRAW) {
-    let {gl} = gpu
-    if (size !== 2 ** Math.ceil(Math.log2(size))) {
-      throw new Error(`Size must be a power of 2, got ${size}`)
-    }
-
-    let key = size + '.' + usage
-    if (!this.bufferPool[key]) this.bufferPool[key] = []
-    let buffer = this.bufferPool[key].pop()
-    if (!buffer) {
-      buffer = gl.createBuffer()!
-      gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
-      gl.bufferData(gl.ARRAY_BUFFER, size, usage)
-      gl.bindBuffer(gl.ARRAY_BUFFER, null)
-      this.bufferPoolIndex.set(buffer, key)
-    }
-
-    return buffer
-  }
-  freeBuffer(buffer: WebGLBuffer, destroy?: boolean) {
-    let {gl} = gpu
-    let key = this.bufferPoolIndex.get(buffer)!
-    let pool = this.bufferPool[key]
-    if (pool.length > 8) destroy = true
-    if (destroy) {
-      this.bufferPoolIndex.delete(buffer)
-      gl.deleteBuffer(buffer)
-    } else {
-      pool.push(buffer)
-    }
-  }
-  getTexture(pixels: number, format = gpu.gl.RGBA32UI) {
-    let {gl} = gpu
-    if (pixels !== 2 ** Math.ceil(Math.log2(pixels))) {
-      throw new Error(`pixels must be a power of 2, got ${pixels}`)
-    }
-
-    let key = pixels + '.' + format
-    if (!this.texturePool[key]) this.texturePool[key] = []
-    let texture = this.texturePool[key].pop()
-
-    if (!texture) {
-      let width = 2 ** Math.ceil(Math.log2(pixels ** 0.5))
-      let height = pixels / width
-
-      texture = gl.createTexture()!
-      gl.bindTexture(gl.TEXTURE_2D, texture)
-      gl.texStorage2D(gl.TEXTURE_2D, 1, format, width, height)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-      gl.bindTexture(gl.TEXTURE_2D, null)
-      this.texturePoolIndex.set(texture, {key, width, height})
-    }
-
-    return texture
-  }
-  dimensions(texture: WebGLTexture) {
-    let {width, height} = this.texturePoolIndex.get(texture)!
-    return {width, height}
-  }
-  freeTexture(texture: WebGLTexture, destroy?: boolean) {
-    let {gl} = gpu
-    let {key} = this.texturePoolIndex.get(texture)!
-    let pool = this.texturePool[key]
-    if (pool.length > 8) destroy = true
-    if (destroy) {
-      this.texturePoolIndex.delete(texture)
-      gl.deleteTexture(texture)
-    } else {
-      pool.push(texture)
-    }
-  }
-}
+import {BufferGeometry, FramebufferTexture} from 'three138'
+import {
+  createThreeBufferGeometry,
+  updateThreeBufferGeometry,
+  createThreeTexture,
+  updateThreeTexture,
+} from './three'
 
 export type Attribute = {
   name: string | null
@@ -128,7 +46,7 @@ export class Buffer<F extends Format | ComplexFormat = Format | ComplexFormat> {
   js = null as null | ArrayBufferView
   gl = null as null | WebGLBuffer
   tex = null as null | WebGLTexture
-  components = 0
+  byteLength = 0
   attribs = [] as Attribute[]
   consumed = false
   constructor(public format: F) {
@@ -140,6 +58,7 @@ export class Buffer<F extends Format | ComplexFormat = Format | ComplexFormat> {
       this.attribs.push({name, format, offset, repeat, count: 0})
       offset += format.components * 4
     }
+    gpu.buffers.add(this)
   }
   get length() {
     let counts = new Set(this.attribs.map((p) => p.count))
@@ -147,25 +66,18 @@ export class Buffer<F extends Format | ComplexFormat = Format | ComplexFormat> {
     if (counts.size >= 2) return NaN
     return Array.from(counts)[0]
   }
-  get byteLength() {
-    return this.components * 4
-  }
-  set byteLength(v: number) {
-    this.components = v / 4
-  }
   get texDimensions() {
     if (!this.byteLength) return [0, 0]
     let pixels = Math.ceil(this.byteLength / 16)
     let width = 2 ** Math.ceil(Math.log2(pixels ** 0.5))
     let height = pixels / width
-    return [width, height]
+    return [width, height] as [number, number]
   }
-  free(destroy?: boolean) {
-    let {pool} = gpu
-    // TODO: free tex
-    if (this.gl) pool.freeBuffer(this.gl, destroy)
-    // if (this.tex) pool.freeTexture(this.tex, destroy)
+  free() {
     this.consumed = false
+    gpu.buffers.delete(this)
+    if (this.gl) gpu.pool.reclaim(this.gl)
+    if (this.tex) gpu.pool.reclaim(this.tex)
     this.js = null
     this.gl = null
     this.tex = null
@@ -194,21 +106,20 @@ export class Buffer<F extends Format | ComplexFormat = Format | ComplexFormat> {
         gl.bindBuffer(gl.ARRAY_BUFFER, read)
         gl.getBufferSubData(gl.ARRAY_BUFFER, 0, this.js)
         gl.bindBuffer(gl.ARRAY_BUFFER, null)
-        pool.freeBuffer(read)
+        pool.reclaim(read)
       }
       case 'gl': {
         if (!this.js && !this.tex) return
         let {gl, pool} = gpu
         this.gl = pool.getBuffer(this.byteLength)
         if (this.tex) {
-          let fb = gl.createFramebuffer()!
           let [w, h] = this.texDimensions
-          gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
+          gl.bindFramebuffer(gl.FRAMEBUFFER, gpu.fb)
           gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.tex, 0)
           gl.bindBuffer(gl.PIXEL_PACK_BUFFER, this.gl!)
           gl.readPixels(0, 0, w, h, gl.RGBA_INTEGER, gl.UNSIGNED_INT, 0)
           gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null)
-          gl.deleteFramebuffer(fb)
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null)
         } else if (this.js) {
           gl.bindBuffer(gl.ARRAY_BUFFER, this.gl)
           gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.js)
@@ -228,6 +139,18 @@ export class Buffer<F extends Format | ComplexFormat = Format | ComplexFormat> {
         gl.bindTexture(gl.TEXTURE_2D, null)
       }
     }
+  }
+  async createThreeBufferGeometry() {
+    return createThreeBufferGeometry(this)
+  }
+  async updateThreeBufferGeometry(geom: BufferGeometry) {
+    return updateThreeBufferGeometry(this, geom)
+  }
+  async createThreeTexture(width: number, height: number) {
+    return createThreeTexture(this, width, height)
+  }
+  async updateThreeTexture(texture: FramebufferTexture) {
+    return updateThreeTexture(this, texture)
   }
   async copy(): Promise<Buffer<F>> {
     return copy(this)
@@ -278,62 +201,3 @@ export const buffer = Object.assign(
   },
   {read, write, concat, copy, merge, rename, slice, split}
 )
-
-type LifetimeInput =
-  | []
-  | [any]
-  | [any, any]
-  | [any, any, any]
-  | [any, any, any, any]
-  | [any, any, any, any, any]
-  | [any, any, any, any, any, any]
-  | [any, any, any, any, any, any, any]
-  | [any, any, any, any, any, any, any, any]
-  | any[]
-
-class Lifetime {
-  buffers = new Set<Buffer>()
-  free(except: Set<Buffer>) {
-    let buffers = Array.from(this.buffers)
-    buffers = buffers.filter((b) => !except.has(b))
-    for (let b of buffers) b.free()
-  }
-}
-
-type LifetimeRange = typeof range
-type LifetimeBuffer = typeof buffer
-export function lifetime<I extends LifetimeInput, O extends any>(
-  fn: (lib: {range: LifetimeRange; buffer: LifetimeBuffer}, ...input: I) => O
-): (...input: I) => O extends Promise<any> ? O : Promise<O> {
-  let f = async (...input: I) => {
-    const lt = new Lifetime()
-    for (let i of input) {
-      if (i instanceof Buffer && i.consumed) {
-        i.consumed = false
-        lt.buffers.add(i)
-      }
-    }
-    function decorate<F extends Function>(f: F) {
-      return ((...args: any[]) => {
-        let result = f(...args)
-        if (result instanceof Array) for (let b of result) lt.buffers.add(b)
-        else lt.buffers.add(result)
-        return result
-      }) as unknown as F
-    }
-    let result = await fn({range: decorate(range), buffer: decorate(buffer)}, ...input)
-    let seen = new Set<any>()
-    let stack = [result] as any[]
-    let except = new Set<Buffer>()
-    while (stack.length) {
-      let current = stack.pop()!
-      if (current instanceof Buffer) except.add(current)
-      if (current instanceof Buffer || seen.has(current)) continue
-      seen.add(current)
-      stack.push(...Object.values(current))
-    }
-    lt.free(except)
-    return result
-  }
-  return f as any
-}

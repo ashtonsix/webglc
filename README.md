@@ -22,7 +22,7 @@ Here's a feature comparison table:
 | `sort`                                | **Yes**                                                                                       | No                 |
 | Kernel Output                         | Up to **16 components**<br />Unlimited components coming soon                                 | Up to 4 components |
 | Batch Read/Write                      | **Yes**                                                                                       | No                 |
-| Integrates with Three.js              | **Yes**, tutorial coming soon                                                                 | No                 |
+| Integrates with Three.js              | **Yes**                                                                                       | No                 |
 
 ## Content
 
@@ -43,6 +43,7 @@ Here's a feature comparison table:
   - [Group Kernel Definitions](#group-kernel-definitions)
 - [Memory Management](#memory-management)
 - [Scope](#scope)
+- [Display](#display)
 - [License](#license)
 - [Roadmap](#roadmap)
 - [Links](#links)
@@ -77,7 +78,7 @@ let fparticle = {
   velocity: f.vec2,
 }
 
-let generate = kernel(null, fparticle)`
+let generate = kernel(f.null, fparticle)`
   void map(int i) {
     write_position(vec2(random(), random()));
     write_velocity(vec2(random(), random()));
@@ -131,11 +132,11 @@ There are 6 kinds of kernel, as determined by the entrypoint's name. They are:
 
 ```txt
 map:    [0, 1, 2, 3] -> [0,  2,  4,  6] (*2)
-filtro:              -> [1,  3, -1, -1] (%2)  out=index
-reduce:              -> [6]             (+)
-scan:                -> [0,  1,  3,  6] (+)
-group: [12, 5, 11]   -> [1, -1,  0,  2]     (/10) out=index
-sort:  [12, 5, 11]   -> [0,  2,  1]     (-)   out=index
+filtro: [0, 1, 2, 3] -> [1,  3, -1, -1] (%2)  out=index
+reduce: [0, 1, 2, 3] -> [6]             (+)
+scan:   [0, 1, 2, 3] -> [0,  1,  3,  6] (+)
+group:  [12, 5, 11]  -> [1, -1,  0,  2] (/10) out=index
+sort:   [12, 5, 11]  -> [0,  2,  1]     (-)   out=index
 ```
 
 The output for filtro, group and sort contain not values from the original array, but rather, indices to values in the original array; here -1 indicates the absence of a value.
@@ -348,6 +349,8 @@ let fparticle = {mass: f.float, position: f.vec2, velocity: f.vec2}
 // equivalent to {mass: number, position: [number, number], velocity: [number, number]}
 type Particle = ParsedFormat<typeof fparticle>
 ```
+
+Use `f.null` for kernels that don't accept any input.
 
 ## Buffers
 
@@ -693,10 +696,10 @@ range().method()
 The read buffer has some restrictions that prevent it from covering every use case, namely:
 
 1. Reduce and scan kernels must have matching read/write formats
-2. TODO: document groupsize-related issue
+2. TODO: document groupsize-related restriction
 3. You cannot mix attributes of different lengths
 
-To illustrate issue 3:
+To illustrate restriction 3:
 
 ```ts
 let addX = kernel({a: f.int, b: f.int}, f.int)`
@@ -707,7 +710,7 @@ let addX = kernel({a: f.int, b: f.int}, f.int)`
 
 let a = buffer(f.int, [0, 1, 2, 3])
 let b = buffer(f.int, [1])
-let merged = buffer.merge({a, b}) // merge is allowed
+let merged = buffer.merge({a, b}) // merge is allowed, and creates a mixed-length buffer
 console.log(merged.length) // NaN
 range(merged.length).map(addX, merged) // will throw error
 ```
@@ -729,6 +732,64 @@ await a.read() // [5, 6, 7, 8]
 
 The scope format must be complex (eg, `{[x]: f.int}` rather than `f.int`). The scope's attribute lengths don't need to match.
 
+## Display
+
+There are a few different ways to do display:
+
+1. Read the data to CPU and do stuff (`buf.read`, slow)
+2. Use the browser's WebGL2 API (`gpu.gl`, complicated)
+3. Use the Three.js integration (reccomended)
+
+### Method 1 (`buf.read`)
+
+Do `buf.read()` and then do more code.
+
+### Method 2 (`gpu.gl`)
+
+Draw a red rectangle:
+
+```ts
+document.body.appendChild(gpu.dom)
+gpu.gl.clearColor(1, 0, 0, 1) // 1,0,0,1 = red
+gpu.gl.clear(gpu.gl.COLOR_BUFFER_BIT)
+// do blitToBackgroundCanvas after updating the canvas
+if (gpu.info.hasFlickerBug) gpu.blitToBackgroundCanvas()
+```
+
+### Method 3 (Three.js)
+
+To get started with the Three.js integration, replace the following lines of code:
+
+```ts
+// this:
+let renderer = new THREE.WebGLRenderer()
+// becomes:
+let renderer = gpu.createThreeRenderer(THREE)
+
+// this:
+document.body.appendChild(renderer.domElement)
+// becomes:
+document.body.appendChild(gpu.dom)
+```
+
+> Using `gpu.dom` protects against this Mozilla Firefox bug: https://bugzilla.mozilla.org/show_bug.cgi?id=1763507
+
+To create/update geometery:
+
+```ts
+let geom = buf.createThreeBufferGeometry()
+buf.updateThreeBufferGeometry(geom)
+```
+
+To create/update texture:
+
+```ts
+let tex = buf.createThreeTexture()
+buf.updateThreeTexture(tex)
+```
+
+Go to [threejs.org/docs](https://threejs.org/docs) if you need help setting up THREE, or figuring out what to do with the geometry/texture.
+
 ## License
 
 MIT
@@ -740,7 +801,6 @@ MIT
 - Editor extension for VSCode
 - webglc website with featured projects and interactive examples
 - `group` kernel
-- Three.JS tutorial
 - Use vertex array objects / uniform buffers for input where practical (performance)
 
 ## Links

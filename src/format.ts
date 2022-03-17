@@ -11,6 +11,8 @@ type Uvec2 = {readonly name: 'uvec2'; readonly base: 'uint'; readonly components
 type Uvec3 = {readonly name: 'uvec3'; readonly base: 'uint'; readonly components: 3}
 type Uvec4 = {readonly name: 'uvec4'; readonly base: 'uint'; readonly components: 4}
 
+export type Null = {readonly null: true}
+
 // prettier-ignore
 export type Format =
   | Float | Vec2  | Vec3  | Vec4
@@ -26,7 +28,7 @@ type ParseMap = {
   4: [number, number, number, number]
 }
 
-export type ParsedFormat<F extends Format | ComplexFormat | null> = F extends null
+export type ParsedFormat<F extends Format | ComplexFormat | Null> = F extends Null
   ? null
   : F extends ComplexFormat
   ? {[K in keyof F]: ParseMap[F[K]['components']]}
@@ -52,6 +54,7 @@ export type MergeFormats<Q extends readonly ComplexFormat[]> =
   unknown
 
 export const format = {
+  null: {null: true} as Null,
   float: {name: 'float', base: 'float', components: 1} as Float,
   vec2: {name: 'vec2', base: 'float', components: 2} as Vec2,
   vec3: {name: 'vec3', base: 'float', components: 3} as Vec3,
@@ -69,6 +72,7 @@ export const format = {
 export const formatQuery = (query: {name?: string; base?: Format['base']; components?: number}) => {
   let name = query.name?.replace(/^f_/, '')
   return Object.values(format).filter((f) => {
+    if ('null' in f) return false
     if (name && name !== f.name) return false
     if (query.base && query.base !== f.base) return false
     if (query.components && query.components !== f.components) return false
@@ -78,16 +82,18 @@ export const formatQuery = (query: {name?: string; base?: Format['base']; compon
 
 export default format
 
-export function isSimpleFormat(f: Format | ComplexFormat | null): f is Format {
-  return f != null && typeof f.components === 'number'
+export function isSimpleFormat(f: Format | ComplexFormat | Null): f is Format {
+  if (!f || 'null' in f) return false
+  return typeof f.components === 'number'
 }
 
-export function isComplexFormat(f: Format | ComplexFormat | null): f is ComplexFormat {
-  return f != null && typeof f.components !== 'number'
+export function isComplexFormat(f: Format | ComplexFormat | Null): f is ComplexFormat {
+  if (!f || 'null' in f) return false
+  return typeof f.components !== 'number'
 }
 
 // created so Format and ComplexFormat may be worked with as if they were the same
-export const formatIterator = (...fs: (Format | ComplexFormat | null)[]) => {
+export const formatIterator = (...fs: (Format | ComplexFormat | Null)[]) => {
   let a = [] as {name: string | null; format: Format}[]
   let o = {} as ComplexFormat
   let n: Format
@@ -117,4 +123,20 @@ export const formatIterator = (...fs: (Format | ComplexFormat | null)[]) => {
   }
 
   return Object.assign(a, {get})
+}
+
+export const formatsMatch = (
+  a?: Format | ComplexFormat | Null,
+  b?: Format | ComplexFormat | Null
+) => {
+  // prettier-ignore
+  if ((a === format.null || a == null)) return b === format.null || b == null
+  if (isSimpleFormat(a)) return b === a
+  if (isComplexFormat(a)) {
+    if (!isComplexFormat(b!)) return false
+    if (Object.keys(a).length !== Object.keys(b).length) return false
+    for (let k of Object.keys(a)) if (a[k] !== b[k]) return false
+  }
+
+  return true
 }

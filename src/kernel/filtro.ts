@@ -37,7 +37,7 @@ export function filtro(kernel: Kernel) {
       }`),
     format.int,
     format.int,
-    null
+    format.null
   )
   kernel.programs.scatter = new Program(
     trimLeadingSpace(`
@@ -59,8 +59,8 @@ export function filtro(kernel: Kernel) {
     `).trim(),
     trimLeadingSpace(`
       #version 300 es
-      flat in int j; out int i;
-      void main() { i = j; }
+      flat in int j; out ivec4 i;
+      void main() { i = ivec4(j, 0., 0., 0.); }
     `).trim(),
     []
   )
@@ -88,17 +88,17 @@ export function filtro(kernel: Kernel) {
 
     gl.useProgram(kernel.programs.scatter.gl!)
 
-    let dataTex = pool.getTexture(2 ** Math.ceil(Math.log2(read.length)), gl.R32I)
-    let maskTex = pool.getTexture(2 ** Math.ceil(Math.log2(read.length)), gl.DEPTH24_STENCIL8)
-    let {width: w, height: h} = pool.dimensions(dataTex)
-    gl.uniform2f(gl.getUniformLocation(kernel.programs.scatter.gl!, 'fdim'), w, h)
-    gl.uniform2i(gl.getUniformLocation(kernel.programs.scatter.gl!, 'idim'), w, h)
-    let fb = gl.createFramebuffer()
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
-    let attach = gl.COLOR_ATTACHMENT0
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, attach, gl.TEXTURE_2D, dataTex, 0)
-    attach = gl.DEPTH_STENCIL_ATTACHMENT
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, attach, gl.TEXTURE_2D, maskTex, 0)
+    let pixels = 2 ** Math.ceil(Math.log2(read.length))
+    let width = 2 ** Math.ceil(Math.log2(pixels ** 0.5))
+    let height = pixels / width
+    let dataTex = pool.getTexture(pixels, gl.RGBA32I)
+    let maskTex = pool.getTexture(pixels, gl.DEPTH24_STENCIL8)
+
+    gl.uniform2f(gl.getUniformLocation(kernel.programs.scatter.gl!, 'fdim'), width, height)
+    gl.uniform2i(gl.getUniformLocation(kernel.programs.scatter.gl!, 'idim'), width, height)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, gpu.fb)
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, dataTex, 0)
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.TEXTURE_2D, maskTex, 0)
 
     gl.bindBuffer(gl.ARRAY_BUFFER, read.gl!)
     let va = gl.createVertexArray()
@@ -112,17 +112,19 @@ export function filtro(kernel: Kernel) {
     gl.stencilFunc(gl.EQUAL, 0, 255)
     gl.clearBufferfi(gl.DEPTH_STENCIL, 0, 0, 0)
     gl.clearBufferiv(gl.COLOR, 0, [-1, -1, -1, -1])
-    gl.viewport(0, 0, w, h)
+    gl.viewport(0, 0, width, height)
     gl.drawArrays(gl.POINTS, 0, r.length)
     gl.disable(gl.STENCIL_TEST)
 
     gl.bindBuffer(gl.ARRAY_BUFFER, null)
-    gl.deleteFramebuffer(fb)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
     gl.deleteVertexArray(va)
 
     readRedIntegerTex(dataTex, r.length, false, read.gl!)
-    pool.freeTexture(dataTex)
-    pool.freeTexture(maskTex)
+    pool.reclaim(dataTex)
+    pool.reclaim(maskTex)
+    pool.reclaim(read.tex)
+    read.js = null
     read.tex = null
 
     let result = [read]

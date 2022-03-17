@@ -1,6 +1,6 @@
 import {Buffer} from '../buffer/buffer'
 import {Range} from '../range'
-import {ComplexFormat, Format, formatIterator} from '../format'
+import format, {ComplexFormat, Format, formatIterator, formatsMatch, Null} from '../format'
 import {gpu} from '../gpu'
 import {finishCompileParallel} from './gl'
 import {extractSourceFragments, validateSourceFragments} from './parse'
@@ -35,9 +35,9 @@ function compile(kernel: Kernel) {
 }
 
 export class Kernel<
-  R extends Format | ComplexFormat | null = Format | ComplexFormat | null,
+  R extends Format | ComplexFormat | Null = Format | ComplexFormat | Null,
   W extends Format | ComplexFormat = Format | ComplexFormat,
-  S extends ComplexFormat | null = ComplexFormat | null
+  S extends ComplexFormat | Null = ComplexFormat | Null
 > {
   method = 'map' as typeof allowedEntrypoints[number]
   programs = {} as {[x: string]: Program}
@@ -59,10 +59,12 @@ export class Kernel<
     flags = [] as string[]
   ): Promise<Buffer[]> {
     try {
-      // waitForIdle as protection against the draw queue overflowing (causes context loss)
-      gpu.idleCounter++
-      if (gpu.idleCounter > 64) await gpu.waitForIdle()
+      if (!formatsMatch(read?.format, this.read)) console.error(`Read format doesn't match`)
+      if (!formatsMatch(scope?.format, this.scope)) console.error(`Scope format doesn't match`)
       finishCompileParallel(gpu.kernels.flatMap((k) => Object.values(k.programs)))
+      // waitForIdle protects against draw queue overflow (causes context loss)
+      gpu.idleCounter++
+      if (gpu.idleCounter >= 64) await gpu.waitForIdle()
       if (method !== this.method) {
         let expected = `Expected kernel to be invoked via "${this.method}"`
         throw new Error(`${expected}, but it was invoked via "${method}"`)
@@ -73,7 +75,8 @@ export class Kernel<
         let note = `You can mix sub-buffer lengths inside scope buffers`
         throw new Error(`${issue}. Found ${found}. ${note}.`)
       }
-      return this.exec(range, read, scope, flags)
+      let result = await this.exec(range, read, scope, flags)
+      return result
     } finally {
       if (read?.consumed) read.free()
       if (scope?.consumed) scope.free()
@@ -90,13 +93,13 @@ class KernelInclude {
 
 export const kernel = Object.assign(
   <
-    R extends Format | ComplexFormat | null = Format | ComplexFormat | null,
+    R extends Format | ComplexFormat | Null = Format | ComplexFormat | Null,
     W extends Format | ComplexFormat = Format | ComplexFormat,
-    S extends ComplexFormat | null = null
+    S extends ComplexFormat | Null = Null
   >(
     read: R,
     write: W,
-    scope = null as S
+    scope = format.null as S
   ) => {
     let components = formatIterator(write).reduce((pv, f) => pv + f.format.components, 0)
     if (components > 16) {
