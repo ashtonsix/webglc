@@ -19,7 +19,7 @@ export type ProgramModel = {
     requestFormat: Format
     batchSize: number
   }[]
-  outRegisters: {format: Format; name: string}[]
+  outRegisters: {format: Format; attrib: string | null; name: string}[]
   writeFunctions: {format: Format; attrib: string | null}[]
   writeBatchSize: number
   userCode: string
@@ -65,7 +65,7 @@ export function generateProgramModel(
       requestFormat: Format
       batchSize: number
     }[],
-    outRegisters: [] as {format: Format; name: string}[],
+    outRegisters: [] as {format: Format; attrib: string | null; name: string}[],
     writeFunctions: [] as {format: Format; attrib: string}[],
     writeBatchSize: sourceFragments.write[0]?.value?.length || 0,
     userCode: src,
@@ -108,10 +108,10 @@ export function generateProgramModel(
     struct.writeFunctions = fit.write.map(({format, name}) => ({format, attrib: name}))
     for (let {format, name} of fit.write) {
       let n = name ? name + '_' : ''
-      struct.outRegisters.push({format, name: n + '0'})
-      struct.outRegisters.push({format, name: n + '1'})
-      struct.outRegisters.push({format, name: n + '2'})
-      struct.outRegisters.push({format, name: n + '3'})
+      struct.outRegisters.push({format, attrib: name, name: n + '0'})
+      struct.outRegisters.push({format, attrib: name, name: n + '1'})
+      struct.outRegisters.push({format, attrib: name, name: n + '2'})
+      struct.outRegisters.push({format, attrib: name, name: n + '3'})
     }
   }
 

@@ -34,21 +34,29 @@ interface THREE {
 }
 
 export class GPU {
-  kernels = [] as Kernel[]
-  buffers = new Set<Buffer>()
   canvas!: HTMLCanvasElement
   dom!: HTMLDivElement
-  backgroundContext!: CanvasRenderingContext2D
   gl!: WebGL2RenderingContext
-  fb!: WebGLFramebuffer
   info!: ReturnType<GPU['getInfo']>
+  // @internal
+  kernels = [] as Kernel[]
+  // @internal
+  buffers = new Set<Buffer>()
+  // @internal
+  backgroundContext!: CanvasRenderingContext2D
+  // @internal
+  fb!: WebGLFramebuffer
+  // @internal
   idleCounter = 0
+  // @internal
   threeRenderer?: WebGLRenderer
+  // @internal
   THREE?: THREE
   constructor() {
     this.setContext(document.createElement('canvas'))
     this.info = this.getInfo()
   }
+  // @internal
   setContext(canvas: HTMLCanvasElement, gl?: WebGL2RenderingContext) {
     for (let b of this.buffers) b.free()
     this.canvas = canvas
@@ -101,38 +109,25 @@ export class GPU {
     }
     return this.threeRenderer
   }
+  // @internal
   getInfo() {
     let {gl} = this
-    let info = {supportsRedInteger: false, supportsImmediateSync: false, hasFlickerBug: false}
+    let info = {hasFlickerBug: false, maxTransformComponents: 0}
 
-    supportsRedInteger: {
-      let tex = gl.createTexture()!
-      gl.bindTexture(gl.TEXTURE_2D, tex)
-      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R32I, 1, 1)
-
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fb)
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0)
-
-      let crf = gl.getParameter(gl.IMPLEMENTATION_COLOR_READ_FORMAT)
-      info.supportsRedInteger = crf === gl.RED_INTEGER
-
-      gl.deleteTexture(tex)
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null)
-    }
-
-    firefox: {
-      info.hasFlickerBug = navigator.userAgent.includes('Firefox')
-      info.supportsImmediateSync = !navigator.userAgent.includes('Firefox')
-    }
+    info.hasFlickerBug = navigator.userAgent.includes('Firefox')
+    info.maxTransformComponents = gl.getParameter(gl.MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS)
 
     return info
   }
   // hack around the circular dependency "buffer -> gpu -> buffer"
+  // @internal
   _pool?: GLPool
+  // @internal
   get pool() {
     if (!this._pool) this._pool = new GLPool()
     return this._pool
   }
+  // @internal
   set pool(pool: GLPool) {
     this._pool = pool
   }
@@ -143,10 +138,7 @@ export class GPU {
     let sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0)!
     gl.flush()
     await new Promise<void>((resolve, reject) => {
-      let i = 0
       function test(): void {
-        let delay = 2 ** (i - 1)
-        i++
         switch (gl.clientWaitSync(sync, 0, 0)) {
           case gl.ALREADY_SIGNALED:
             return resolve()
@@ -154,7 +146,7 @@ export class GPU {
             // here Firefox may warn "ClientWaitSync must return TIMEOUT_EXPIRED until control has returned to the user agent's main loop"
             // as far as i can tell webglc's waitForIdle implementation is 100% correct and this warning shows up unavoidably anyway
             // https://searchfox.org/mozilla-central/source/dom/canvas/ClientWebGLContext.cpp#5207
-            setTimeout(test, delay)
+            setTimeout(test, 4)
             return
           case gl.CONDITION_SATISFIED:
             return resolve()
@@ -162,7 +154,7 @@ export class GPU {
             if (failed) return reject()
             // Firefox, even upon success, can return gl.WAIT_FAILED the first time it's queried, and gl.ALREADY_SIGNALLED the next time
             failed = true
-            setTimeout(test, delay)
+            setTimeout(test, 4)
             return
           default:
             return reject()
@@ -172,39 +164,6 @@ export class GPU {
     })
     gl.deleteSync(sync)
   }
-  // async waitForIdle() {
-  //   this.idleCounter = 0
-  //   let {gl} = this
-  //   let failed = false
-  //   let sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0)!
-  //   gl.flush()
-  //   await new Promise<void>((resolve, reject) => {
-  //     let timeout = this.info.supportsImmediateSync ? 0 : 1
-  //     function test(): void {
-  //       timeout = Math.max(timeout * 2, 1)
-  //       switch (gl.clientWaitSync(sync, 0, 0)) {
-  //         case gl.ALREADY_SIGNALED:
-  //           return resolve()
-  //         case gl.CONDITION_SATISFIED:
-  //           return resolve()
-  //         case gl.TIMEOUT_EXPIRED:
-  //           setTimeout(test, timeout)
-  //           return
-  //         case gl.WAIT_FAILED:
-  //           // firefox, even upon success, may return gl.WAIT_FAILED the first time it's queried,
-  //           // and gl.ALREADY_SIGNALLED the second time
-  //           if (failed) return reject()
-  //           failed = true
-  //           setTimeout(test, timeout)
-  //           return
-  //         default:
-  //           return reject()
-  //       }
-  //     }
-  //     setTimeout(test, timeout)
-  //   })
-  //   gl.deleteSync(sync)
-  // }
 }
 
 export const gpu = new GPU()

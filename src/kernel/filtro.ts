@@ -20,11 +20,7 @@ export function filtro(kernel: Kernel) {
     `,
     2
   )
-  kernel.programs.main = new Program(
-    template.vs(struct),
-    template.fs(),
-    struct.outRegisters.map((r) => `glc_out_${r.name}`)
-  )
+  kernel.programs.main = new Program(template.vs(struct), template.fs(), Program.tf(struct))
   let prefixSum = new Kernel(
     trimLeadingSpace(`
       const int identity = 0;
@@ -62,10 +58,10 @@ export function filtro(kernel: Kernel) {
       flat in int j; out ivec4 i;
       void main() { i = ivec4(j, 0., 0., 0.); }
     `).trim(),
-    []
+    [{attribs: [], registers: []}]
   )
   kernel.exec = async (r, read, scope, flags) => {
-    read = await map(kernel.programs.main.gl!, r, {read, scope, write: kernel.write})
+    read = await map(kernel.programs.main, r, {read, scope, write: kernel.write})
     let [next] = await prefixSum.invoke(r, 'scan', read, null)
     read.free()
     read = next
@@ -86,23 +82,22 @@ export function filtro(kernel: Kernel) {
       gl.bindBuffer(gl.COPY_WRITE_BUFFER, null)
     }
 
-    gl.useProgram(kernel.programs.scatter.gl!)
-
+    gl.useProgram(kernel.programs.scatter.gl[0])
     let pixels = 2 ** Math.ceil(Math.log2(read.length))
     let width = 2 ** Math.ceil(Math.log2(pixels ** 0.5))
     let height = pixels / width
     let dataTex = pool.getTexture(pixels, gl.RGBA32I)
     let maskTex = pool.getTexture(pixels, gl.DEPTH24_STENCIL8)
 
-    gl.uniform2f(gl.getUniformLocation(kernel.programs.scatter.gl!, 'fdim'), width, height)
-    gl.uniform2i(gl.getUniformLocation(kernel.programs.scatter.gl!, 'idim'), width, height)
+    gl.uniform2f(gl.getUniformLocation(kernel.programs.scatter.gl[0], 'fdim'), width, height)
+    gl.uniform2i(gl.getUniformLocation(kernel.programs.scatter.gl[0], 'idim'), width, height)
     gl.bindFramebuffer(gl.FRAMEBUFFER, gpu.fb)
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, dataTex, 0)
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.TEXTURE_2D, maskTex, 0)
 
     gl.bindBuffer(gl.ARRAY_BUFFER, read.gl!)
     let va = gl.createVertexArray()
-    let iloc = gl.getAttribLocation(kernel.programs.scatter.gl!, 'i')
+    let iloc = gl.getAttribLocation(kernel.programs.scatter.gl[0], 'i')
     gl.bindVertexArray(va)
     gl.enableVertexAttribArray(iloc)
     gl.vertexAttribIPointer(iloc, 1, gl.INT, 0, 0)

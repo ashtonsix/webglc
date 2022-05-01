@@ -9,13 +9,9 @@ export function map(kernel: Kernel) {
 
   let struct = generateProgramModel(kernel, sourceFragments, src)
 
-  kernel.programs.main = new Program(
-    template.vs(struct),
-    template.fs(),
-    struct.outRegisters.map((r) => `glc_out_${r.name}`)
-  )
+  kernel.programs.main = new Program(template.vs(struct), template.fs(), Program.tf(struct))
   kernel.exec = async (range, read, scope) => {
-    return [await mapGL(kernel.programs.main.gl!, range, {read, scope, write: kernel.write})]
+    return [await mapGL(kernel.programs.main, range, {read, scope, write: kernel.write})]
   }
   return kernel
 }

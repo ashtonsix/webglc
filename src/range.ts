@@ -61,6 +61,7 @@ export class Range {
     if (!flags.length) return buf[0]
     return buf
   }
+  // @internal
   filter(): never {
     throw new Error(`Did you mean to call ".filtro()"?`)
   }

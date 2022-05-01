@@ -9,6 +9,7 @@ import {filtro} from './filtro'
 import {reduce} from './reduce'
 import {scan} from './scan'
 import {sort} from './sort'
+import {ProgramModel} from './model'
 
 function compile(kernel: Kernel) {
   let [sourceFragments] = extractSourceFragments(kernel.src)
@@ -40,7 +41,9 @@ export class Kernel<
   S extends ComplexFormat | Null = ComplexFormat | Null
 > {
   method = 'map' as typeof allowedEntrypoints[number]
+  // @internal
   programs = {} as {[x: string]: Program}
+  // @internal
   exec = null as unknown as (
     range: Range,
     read: Buffer | null,
@@ -51,6 +54,7 @@ export class Kernel<
     compile(this)
     gpu.kernels.push(this)
   }
+  // @internal
   async invoke(
     range: Range,
     method: string,
@@ -84,11 +88,8 @@ export class Kernel<
   }
 }
 
-class KernelStub {
-  constructor(public header: string) {}
-}
 class KernelInclude {
-  constructor(public src: string, public header: string) {}
+  constructor(public header: string, public src: string) {}
 }
 
 export const kernel = Object.assign(
@@ -103,7 +104,7 @@ export const kernel = Object.assign(
   ) => {
     let components = formatIterator(write).reduce((pv, f) => pv + f.format.components, 0)
     if (components > 16) {
-      throw new Error(`Too many components in write format`)
+      // throw new Error(`Too many components in write format`)
     }
     return (str: TemplateStringsArray, ...interstices: KernelInclude[]) => {
       let src = str[0]
@@ -112,9 +113,7 @@ export const kernel = Object.assign(
         src += str[+i + 1]
       }
       src = trimLeadingSpace(src)
-      let kernel = new Kernel(src, read, write, scope) as Kernel<R, W, S>
-      gpu.kernels.push(kernel)
-      return kernel
+      return new Kernel(src, read, write, scope) as Kernel<R, W, S>
     }
   },
   {
@@ -127,19 +126,20 @@ export const kernel = Object.assign(
       include = trimLeadingSpace(include)
       return new KernelInclude(include, include)
     },
-    dynamic(src: string, stub: KernelStub = new KernelStub('')) {
-      src = trimLeadingSpace(src)
-      return new KernelInclude(src, stub.header)
-    },
-    stub(src: TemplateStringsArray, ...interstices: string[]) {
-      let stub = src[0]
-      for (let i in interstices) {
-        stub += interstices[i]
-        stub += src[+i + 1]
+    dynamic: (() => {
+      function createDynamicKernelInclude(header: KernelInclude, src: string): KernelInclude
+      function createDynamicKernelInclude(src: string): KernelInclude
+      function createDynamicKernelInclude(header: KernelInclude | string, src?: string) {
+        if (!src) {
+          src = header as string
+          header = kernel.include``
+        }
+        header = header as KernelInclude
+        src = trimLeadingSpace(src)
+        return new KernelInclude(header.src, src)
       }
-      stub = trimLeadingSpace(stub)
-      return new KernelStub(stub)
-    },
+      return createDynamicKernelInclude
+    })(),
   }
 )
 
@@ -160,6 +160,42 @@ export type KernelStruct = {
 }
 
 export class Program {
-  gl?: WebGLProgram
-  constructor(public vs: string, public fs: string, public transformFeedback: string[]) {}
+  gl = [] as WebGLProgram[]
+  constructor(
+    public vs: string,
+    public fs: string,
+    public transformFeedback: {attribs: (string | null)[]; registers: string[]}[]
+  ) {}
+  // break transform feedback registers across multiple sub-programs,
+  // maximising components per sub-program while ensuring no attrib
+  // is split across multiple sub-programs
+  static tf(model: ProgramModel) {
+    let plan = [] as Set<string | null>[]
+    plan: {
+      let attribSz = {} as {[attrib: string]: number}
+      for (let r of model.outRegisters) {
+        if (!attribSz[r.attrib ?? '.']) attribSz[r.attrib ?? '.'] = 0
+        attribSz[r.attrib ?? '.'] += r.format.components
+      }
+      let limit = gpu.info.maxTransformComponents
+      let counter = 0
+      let current = new Set<string | null>()
+      for (let a in attribSz) {
+        counter += attribSz[a]
+        if (counter > limit) {
+          plan.push(current)
+          counter = 0
+          current = new Set<string | null>()
+        }
+        current.add(a === '.' ? null : a)
+      }
+      if (current.size) plan.push(current)
+    }
+    let chunks = plan.map((a) => ({attribs: Array.from(a), registers: [] as string[]}))
+    for (let reg of model.outRegisters) {
+      let i = plan.findIndex((p) => p.has(reg.attrib))
+      chunks[i].registers.push(`glc_out_${reg.name}`)
+    }
+    return chunks
+  }
 }

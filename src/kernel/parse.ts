@@ -204,6 +204,7 @@ export function validateSourceFragments(
             sourceFragments.entrypoint[0]
           )
         }
+        break
       case 'reduce':
       case 'scan':
         if (JSON.stringify(kernel.read) !== JSON.stringify(kernel.write)) {
@@ -213,6 +214,7 @@ export function validateSourceFragments(
             sourceFragments.entrypoint[0]
           )
         }
+        break
     }
   }
   format_keys_unique: {

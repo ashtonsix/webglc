@@ -7,7 +7,7 @@ import * as template from './template'
 import {logSourceError} from './parse'
 
 export function finishCompileParallel(programs: Program[]) {
-  programs = programs.filter((p) => !p.gl)
+  programs = programs.filter((p) => !p.gl.length)
   let {gl} = gpu
   let vsca = [] as WebGLShader[]
   let fsca = [] as WebGLShader[]
@@ -26,38 +26,45 @@ export function finishCompileParallel(programs: Program[]) {
   }
   for (let i in programs) {
     let p = programs[i]
-    p.gl = gl.createProgram()!
-    gl.attachShader(p.gl!, vsca[i]!)
-    gl.attachShader(p.gl!, fsca[i]!)
-    if (p.transformFeedback.length) {
-      gl.transformFeedbackVaryings(p.gl!, p.transformFeedback, gl.INTERLEAVED_ATTRIBS)
+    for (let {registers} of p.transformFeedback) {
+      let glp = gl.createProgram()!
+      p.gl.push(glp)
+      gl.attachShader(glp, vsca[i]!)
+      gl.attachShader(glp, fsca[i]!)
+      if (p.transformFeedback.length) {
+        gl.transformFeedbackVaryings(glp, registers, gl.INTERLEAVED_ATTRIBS)
+      }
     }
   }
   for (const p of programs) {
-    gl.linkProgram(p.gl!)
+    for (const glp of p.gl) {
+      gl.linkProgram(glp)
+    }
   }
   let matches = new Set<string>()
   for (const i in programs) {
     let p = programs[i]
-    if (!gl.getProgramParameter(p.gl!, gl.LINK_STATUS)) {
-      let ve = gl.getShaderInfoLog(vsca[i]!)!.matchAll(/ERROR: \d+:(\d+):(.+)/g)
-      let fe = gl.getShaderInfoLog(fsca[i]!)!.matchAll(/ERROR: \d+:(\d+):(.+)/g)
-      let vg = {} as {[x: string]: string[]}
-      let fg = {} as {[x: string]: string[]}
-      for (let [match, line, message] of ve) {
-        if (matches.has(match)) continue
-        if (!vg[line]) vg[line] = []
-        vg[line].push(message.trim())
-        matches.add(match)
+    for (const glp of p.gl) {
+      if (!gl.getProgramParameter(glp!, gl.LINK_STATUS)) {
+        let ve = gl.getShaderInfoLog(vsca[i]!)!.matchAll(/ERROR: \d+:(\d+):(.+)/g)
+        let fe = gl.getShaderInfoLog(fsca[i]!)!.matchAll(/ERROR: \d+:(\d+):(.+)/g)
+        let vg = {} as {[x: string]: string[]}
+        let fg = {} as {[x: string]: string[]}
+        for (let [match, line, message] of ve) {
+          if (matches.has(match)) continue
+          if (!vg[line]) vg[line] = []
+          vg[line].push(message.trim())
+          matches.add(match)
+        }
+        for (let [match, line, message] of fe) {
+          if (matches.has(match)) continue
+          if (!fg[line]) fg[line] = []
+          fg[line].push(message.trim())
+          matches.add(match)
+        }
+        for (let line in vg) logSourceError(vg[line].join('\n'), p.vs, +line - 1)
+        for (let line in fg) logSourceError(fg[line].join('\n'), p.fs, +line - 1)
       }
-      for (let [match, line, message] of fe) {
-        if (matches.has(match)) continue
-        if (!fg[line]) fg[line] = []
-        fg[line].push(message.trim())
-        matches.add(match)
-      }
-      for (let line in vg) logSourceError(vg[line].join('\n'), p.vs, +line - 1)
-      for (let line in fg) logSourceError(fg[line].join('\n'), p.fs, +line - 1)
     }
   }
 }
@@ -70,7 +77,23 @@ type MapConfig = {
   outputByteLength?: number | null
   uniforms?: () => void
 }
-export async function map(program: WebGLProgram, range: Range, config = {} as MapConfig) {
+export async function map(program: Program, range: Range, config = {} as MapConfig) {
+  if (program.gl.length === 1) {
+    return mapOne(program.gl[0], range, config)
+  }
+  config.write = config.write as ComplexFormat
+  let parts = [] as Buffer<ComplexFormat>[]
+  for (let i = 0; i < program.gl.length; i++) {
+    let attribs = program.transformFeedback[i].attribs
+    let write = {} as any
+    for (let k in config.write) if (attribs.includes(k)) write[k] = config.write[k]
+    let part = await mapOne(program.gl[i], range, {...config, write})
+    parts.push(part as Buffer<ComplexFormat>)
+  }
+  return await buffer.merge(...parts)
+}
+
+export async function mapOne(program: WebGLProgram, range: Range, config = {} as MapConfig) {
   let length = range.end - range.start
   let {gl, pool} = gpu
   let output = buffer(config.write)
@@ -100,9 +123,9 @@ export async function map(program: WebGLProgram, range: Range, config = {} as Ma
   // gl.uniform1i(gl.getUniformLocation(program, `groupSize`), range.groupSize)
   gl.uniform3i(
     gl.getUniformLocation(program, 'glc_urandomState'),
-    Math.random() * 2 ** 32 + 128,
-    Math.random() * 2 ** 32 + 128,
-    Math.random() * 2 ** 32 + 128
+    (Math.random() * 2 ** 32 + 128) % 2 ** 32,
+    (Math.random() * 2 ** 32 + 128) % 2 ** 32,
+    (Math.random() * 2 ** 32 + 128) % 2 ** 32
   )
   if (config.uniforms) config.uniforms()
   let tf = gl.createTransformFeedback()
@@ -141,10 +164,10 @@ export function readRedIntegerTex(
         void main() { o = i; }
       `).trim(),
       template.fs(),
-      ['o']
+      [{attribs: [], registers: ['o']}]
     )
     finishCompileParallel([program])
-    readRedIntegerProgram = program.gl!
+    readRedIntegerProgram = program.gl[0]!
   }
 
   gl.useProgram(readRedIntegerProgram)

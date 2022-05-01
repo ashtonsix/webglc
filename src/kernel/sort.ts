@@ -78,11 +78,7 @@ export function sort(kernel: Kernel) {
       .replace(/3$/, '3, sorted.w')
     return `map(${args});`
   }
-  kernel.programs.main = new Program(
-    template.vs(struct),
-    template.fs(),
-    struct.outRegisters.map((r) => `glc_out_${r.name}`)
-  )
+  kernel.programs.main = new Program(template.vs(struct), template.fs(), Program.tf(struct))
 
   kernel.exec = async (range, read, scope) => {
     let length = range.length
@@ -95,13 +91,13 @@ export function sort(kernel: Kernel) {
     // if partition.y == 8, then i ^ py adds or subtracts 8 from i (bit flip)
     for (let px = 2; px <= range.length; px *= 2) {
       for (let py = px / 2; py > 0; py = Math.floor(py / 2)) {
-        let next = await map(kernel.programs.main.gl!, range, {
+        let next = await map(kernel.programs.main, range, {
           read,
           scope,
           scope2: sorted,
           write: kernel.write,
           uniforms: () => {
-            let p = kernel.programs.main.gl!
+            let p = kernel.programs.main.gl[0]!
             gl.uniform2i(gl.getUniformLocation(p, 'glc_part'), px, py)
             gl.uniform1i(gl.getUniformLocation(p, 'glc_sort_vertex_count'), length)
           },

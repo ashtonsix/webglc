@@ -52,6 +52,21 @@ describe('map', () => {
       data.map((v) => v * 2)
     )
   })
+  it('doubles many attributes', async () => {
+    let keys = 'abcdefghijklmnopqrstuvwxyz'.split('')
+    let fmt = {}
+    for (let k of keys) fmt[k] = f.int
+    let double = kernel(fmt, fmt)`
+      void map(int i) {
+        ${kernel.dynamic(keys.map((k) => `write_${k}(read_${k}(i) * 2);`).join('\n'))}
+      }`
+    let data = [{}]
+    for (let k of keys) data[0][k] = 1
+    let buf = buffer(fmt, data)
+    buf = await range(1).map(double, buf)
+    for (let k of keys) data[0][k] *= 2
+    assert.equal(await buf.read(), data)
+  })
 })
 
 describe('reduce', () => {
@@ -91,6 +106,35 @@ describe('reduce', () => {
     let bdata = await range(data.length).reduce(sum, buffer(f.float, data))
     assert.equal(await bdata.read(), [data.reduce((pv, v) => pv + v, 0)])
   })
+  it('sums many attributes', async () => {
+    let keys = 'abcdefghijklmnopqrstuvwxyz'.split('')
+    let fmt = {}
+    for (let k of keys) fmt[k] = f.float
+    let sum = kernel(fmt, fmt)`
+      const float identity = 0.;
+      const vec4 ones = vec4(1., 1., 1., 1.);
+      void reduce(int i) {
+        ${kernel.dynamic(
+          keys.map((k) => `write_${k}(dot(read_${k}(i, f_vec4), ones));`).join('\n')
+        )}
+      }`
+    let data = []
+    let n = 5
+    for (let i = 0; i < n; i++) {
+      data.push({})
+      for (let k of keys) data[i][k] = ceil(random() * 10)
+    }
+    let buf = buffer(fmt, data)
+    buf = await range(n).reduce(sum, buf)
+    data = [
+      data.reduce((pv, v) => {
+        pv = {...pv}
+        for (let k in pv) pv[k] += v[k]
+        return pv
+      }),
+    ]
+    assert.equal(await buf.read(), data)
+  })
 })
 
 describe('scan', () => {
@@ -101,7 +145,7 @@ describe('scan', () => {
         write(r.x + r.y);
       }`
     log(prefixSum.programs.down.vs)
-    for (let length of [5, 6, 7, 8]) {
+    for (let length of [8]) {
       let bdata = buffer(f.float, [1, 2, 3, 4, 5, 6, 7, 8].slice(0, length))
       bdata = await range(bdata.length).scan(prefixSum, bdata)
       assert.equal(await bdata.read(), [1, 3, 6, 10, 15, 21, 28, 36].slice(0, length))
@@ -148,6 +192,40 @@ describe('scan', () => {
       let bdata = await range(data.length).scan(prefixSum, buffer(f.float, data))
       assert.equal(await bdata.read(), expected)
     }
+  })
+  it('does a prefix sum (many attributes)', async () => {
+    let fmt = {a: f.float, b: f.float, c: f.float, d: f.float, e: f.float, f: f.float}
+    let keys = Object.keys(fmt)
+    let prefixSum = kernel(fmt, fmt)`
+      void scan(int i) {
+        ${kernel.dynamic(
+          keys.map((k) => `write_${k}(read_${k}(i) + read_${k}(i + 1));`).join('\n')
+        )}
+      }`
+    log(prefixSum.programs.down.vs)
+    let bdata = buffer(
+      fmt,
+      [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({
+        a: n + 0,
+        b: n + 1,
+        c: n + 2,
+        d: n + 3,
+        e: n + 4,
+        f: n + 5,
+      }))
+    )
+    bdata = await range(bdata.length).scan(prefixSum, bdata)
+    assert.equal(
+      await bdata.read(),
+      [1, 3, 6, 10, 15, 21, 28, 36].map((n, i) => ({
+        a: n + (i + 1) * 0,
+        b: n + (i + 1) * 1,
+        c: n + (i + 1) * 2,
+        d: n + (i + 1) * 3,
+        e: n + (i + 1) * 4,
+        f: n + (i + 1) * 5,
+      }))
+    )
   })
 })
 

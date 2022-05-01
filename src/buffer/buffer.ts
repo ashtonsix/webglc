@@ -43,11 +43,17 @@ export const attributeIterator = (attrib: Attribute) => {
 }
 
 export class Buffer<F extends Format | ComplexFormat = Format | ComplexFormat> {
+  // @internal
   js = null as null | ArrayBufferView
+  // @internal
   gl = null as null | WebGLBuffer
+  // @internal
   tex = null as null | WebGLTexture
+  // @internal
   byteLength = 0
+  // @internal
   attribs = [] as Attribute[]
+  // @internal
   consumed = false
   constructor(public format: F) {
     let repeat = 0
@@ -66,6 +72,7 @@ export class Buffer<F extends Format | ComplexFormat = Format | ComplexFormat> {
     if (counts.size >= 2) return NaN
     return Array.from(counts)[0]
   }
+  // @internal
   get texDimensions() {
     if (!this.byteLength) return [0, 0]
     let pixels = Math.ceil(this.byteLength / 16)
@@ -88,6 +95,7 @@ export class Buffer<F extends Format | ComplexFormat = Format | ComplexFormat> {
     this.consumed = true
     return this
   }
+  // @internal
   async acquire(key: 'js' | 'gl' | 'tex') {
     if (this[key]) return
     switch (key) {
@@ -155,7 +163,7 @@ export class Buffer<F extends Format | ComplexFormat = Format | ComplexFormat> {
   async copy(): Promise<Buffer<F>> {
     return copy(this)
   }
-  async slice(start: number, end?: number): Promise<Buffer<F>> {
+  async slice(start = 0, end?: number): Promise<Buffer<F>> {
     return slice(this, start, end)
   }
   async concat(...buffers: Buffer<F>[]): Promise<Buffer<F>> {

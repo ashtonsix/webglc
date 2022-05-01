@@ -1,32 +1,29 @@
-# webglc
+# WebGLC
 
-> **Maturity**: Experimental. All are welcome to use webglc, but be prepared for bugs, rough corners and missing functionality.
-
-webglc is an accelerated computing library for web browsers, ideal for physics simulations, cellular automata, linear algebra and data analysis. webglc kernels can go up to 20x faster than the equivalent JavaScript. webglc is an alternative to [GPU.js](https://github.com/gpujs/gpu.js). Whereas GPU.js prioritises convenience, webglc prioritises advanced compute capabilities.
+WebGLC (WebGL Compute) is an accelerated compute library for web browsers, ideal for physics simulations, cellular automata, linear algebra and data analysis. WebGLC kernels can go up to 20x faster than the equivalent JavaScript. WebGLC is an alternative to [GPU.js](https://github.com/gpujs/gpu.js). Whereas GPU.js prioritises convenience, WebGLC prioritises advanced compute capabilities.
 
 Here's a feature comparison table:
 
-|                                       | webglc                                                                                        | GPU.js             |
-| ------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------ |
-| Kernel Language                       | GLSL 3.0                                                                                      | JavaScript         |
-| Native Functions                      | **Yes**                                                                                       | Opt-In             |
-| Browser Support                       | WebGL2 required<br/>[Now available in all major browsers](https://caniuse.com/?search=webgl2) | **All Browsers**   |
-| Node.JS Support                       | No                                                                                            | **Yes**            |
-| Debugger                              | No                                                                                            | **Yes**            |
-| `random`                              | **Yes**                                                                                       | **Yes**            |
-| `map`                                 | **Yes**                                                                                       | **Yes**            |
-| `filtro`<br />(`filter`, but Italian) | **Yes**                                                                                       | No                 |
-| `reduce`                              | **Yes**                                                                                       | No                 |
-| `scan`                                | **Yes**                                                                                       | No                 |
-| `group`                               | Coming soon                                                                                   | No                 |
-| `sort`                                | **Yes**                                                                                       | No                 |
-| Kernel Output                         | Up to **16 components**<br />Unlimited components coming soon                                 | Up to 4 components |
-| Batch Read/Write                      | **Yes**                                                                                       | No                 |
-| Integrates with Three.js              | **Yes**                                                                                       | No                 |
+|                                       | WebGLC       | GPU.js         |
+| ------------------------------------- | ------------ | -------------- |
+| Kernel Language                       | GLSL 3.0     | JavaScript     |
+| Native Functions                      | **Yes**      | Opt-In         |
+| Browser Support                       | **Yes**      | **Yes**        |
+| Node.JS Support                       | No           | **Yes**        |
+| Debugger                              | No           | **Yes**        |
+| `random`                              | **Yes**      | **Yes**        |
+| `map`                                 | **Yes**      | **Yes**        |
+| `filtro`<br />(`filter`, but Italian) | **Yes**      | No             |
+| `reduce`                              | **Yes**      | No             |
+| `scan`                                | **Yes**      | No             |
+| `group`                               | Coming soon  | No             |
+| `sort`                                | **Yes**      | No             |
+| Kernel Output                         | **Flexible** | 1 to 4 numbers |
+| Batch Read/Write                      | **Yes**      | No             |
+| Integrates with Three.js              | **Yes**      | No             |
 
 ## Content
 
-- [Creator's Note](#creators-note)
 - [Install](#install)
 - [Introductory Example](#introductory-example)
 - [Concept Overview](#concept-overview)
@@ -47,16 +44,7 @@ Here's a feature comparison table:
 - [License](#license)
 - [Roadmap](#roadmap)
 - [Links](#links)
-
-## Creator's Note
-
-Hello, I'm Ashton Six and the creator of webglc. I'm currently in need of employment. If you are hiring and have an opportunity to discuss then please email [me@ashtonsix.com](mailto:me@ashtonsix.com) (resume at [ashtonsix.com/resume.pdf](https://ashtonsix.com/resume.pdf)). Thanks!
-
-You can follow me on Twitter [@AshtonSix](https://twitter.com/AshtonSix).
-
-Creating webglc would have been much harder without [webgl2fundamentals.org](https://webgl2fundamentals.org/) (created by [@greggman](https://twitter.com/greggman)) and [GPU Gems 3](https://developer.nvidia.com/gpugems/gpugems3/contributors) (parts 5 and 6 in particular).
-
-I look forward to listing a great number of webglc contributors here. Do you want to collaborate on webglc, educational resources or other accelerated compute libraries? Join me at https://discord.gg/D27BDpJr
+- [Credit](#credit)
 
 ## Install
 
@@ -68,7 +56,7 @@ Editor support coming soon (syntax highlighting and error checking, for VSCode a
 
 ## Introductory Example
 
-To obtain a quick flavour of webglc let's generate 100,000 particles, move them once, find their average position, and read that value to the CPU:
+To obtain a quick flavour of WebGLC let's generate 100,000 particles, move them once, find their average position, and read that value to the CPU:
 
 ```ts
 import {format as f, ParsedFormat, kernel, lifetime} from 'webglc'
@@ -153,7 +141,7 @@ kernel(readFormat, writeFormat)`
   }`
 ```
 
-All entrypoint functions accept an index, return nothing, and use the read/write functions generated by webglc for I/O. Any "out-of-bounds" read will return the identity value.
+All entrypoint functions accept an index, return nothing, and use the read/write functions generated by WebGLC for I/O. Any "out-of-bounds" read will return the identity value.
 
 ### Map
 
@@ -314,7 +302,7 @@ let nonCommutativeScan = kernel(f.float, f.float)`
 
 ### Group
 
-TODO
+Not implemented yet, you can use `sort` to group values in the meantime
 
 ### Sort
 
@@ -458,7 +446,7 @@ let buf = buffer({dolphins: f.int}).rename({dolphins: 'cetaceans'} as const)
 
 ### Memory Management
 
-webglc lacks automatic garbage collection, so buffers need to be manually deallocated when they're no longer needed.
+WebGLC lacks automatic garbage collection, so buffers need to be manually deallocated when they're no longer needed.
 
 Let's begin this topic with an example of what one should NOT do:
 
@@ -474,7 +462,7 @@ tick()
 
 The above code will create a new buffer every tick, use up all the browser's memory and eventually cause a context loss (webgl's equivalent to crashing). New buffers are created whenever you invoke a kernel or buffer method (eg, `buffer.slice()`).
 
-webglc provides three ways to deallocate memory `free`, `consume` & `lifetime`. Here's how to use `free`:
+WebGLC provides three ways to deallocate memory `free`, `consume` & `lifetime`. Here's how to use `free`:
 
 ```ts
 let tick = async () => {
@@ -799,7 +787,7 @@ MIT
 - Faster `group` implementation
 - Groupsize parameter for `range` (eg, max in each group)
 - Editor extension for VSCode
-- webglc website with featured projects and interactive examples
+- WebGLC website with featured projects and interactive examples
 - `group` kernel
 - Use vertex array objects / uniform buffers for input where practical (performance)
 
@@ -810,3 +798,9 @@ MIT
 - GPU Gems 3: https://developer.nvidia.com/gpugems/gpugems3
 - GLES 3.0 System Specification: https://www.khronos.org/registry/OpenGL/specs/es/3.0/es_spec_3.0.pdf
 - GLES 3.0 Language Specification: https://www.khronos.org/registry/OpenGL/specs/es/3.0/GLSL_ES_Specification_3.00.pdf
+
+## Credit
+
+WebGLC was created by Ashton Six (currently unemployed, resume at [ashtonsix.com/resume.pdf](https://ashtonsix.com/resume.pdf))
+
+Creating WebGLC would have been much harder without [webgl2fundamentals.org](https://webgl2fundamentals.org/) (created by [@greggman](https://twitter.com/greggman)) and [GPU Gems 3](https://developer.nvidia.com/gpugems/gpugems3/contributors) (parts 5 and 6 in particular).

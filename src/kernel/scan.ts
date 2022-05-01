@@ -1,6 +1,6 @@
-import {attributeIterator, Buffer} from '../buffer/buffer'
+import {attributeIterator, buffer, Buffer} from '../buffer/buffer'
 import {range} from '../range'
-import {ComplexFormat, formatIterator, formatQuery} from '../format'
+import {ComplexFormat, formatIterator, formatQuery, isSimpleFormat} from '../format'
 import {gpu} from '../gpu'
 import {Program, trimLeadingSpace, Kernel} from './kernel'
 import {map} from './gl'
@@ -23,26 +23,21 @@ export function scan(kernel: Kernel) {
     let struct = generateProgramModel(kernel, sourceFragments, src)
     struct.main.runUserCode = (i) => `scan(${i}${includeSwap ? `, 0` : ``});`
     struct.vertexIdMultiplier = 8
-    kernel.programs.up = new Program(
-      template.vs(struct),
-      template.fs(),
-      struct.outRegisters.map((r) => `glc_out_${r.name}`)
-    )
+    kernel.programs.up = new Program(template.vs(struct), template.fs(), Program.tf(struct))
   }
   insert: {
     let src = trimLeadingSpace(`
       void scan(int i) {
-        ${fit.write.map(
-          (f) => `write${u(f.name)}(read${u(f.name)}(), identity, identity, identity);`
-        )}
+        ${fit.write
+          .map((f) => {
+            let id = `identity${u(f.name)}`
+            return `write${u(f.name)}(read${u(f.name)}(), ${id}, ${id}, ${id});`
+          })
+          .join('\n')}
       }`)
     let [frag] = extractSourceFragments(src)
     let struct = generateProgramModel(kernel, frag, src)
-    kernel.programs.insert = new Program(
-      template.vs(struct),
-      template.fs(),
-      struct.outRegisters.map((r) => `glc_out_${r.name}`)
-    )
+    kernel.programs.insert = new Program(template.vs(struct), template.fs(), Program.tf(struct))
   }
   down: {
     let fit = {read: formatIterator(kernel.read, kernel.scope), write: formatIterator(kernel.write)}
@@ -58,25 +53,25 @@ export function scan(kernel: Kernel) {
           let fn = formatQuery({base: f.format.base, components: 4})[0].name
           after += trimLeadingSpace(
             `
-              ${fn} q = ${r0}(i + 0, f_${fn});
-              ${fn} r = ${r0}(i + 4, f_${fn});
-              ${fn} s = ${r1}(i * 2 + 0, f_${fn});
-              ${fn} t = ${r1}(i * 2 + 4, f_${fn});
-              ${fn} u = ${r1}(i * 2 + 8, f_${fn});
-              ${fn} v = ${r1}(i * 2 + 12, f_${fn});
+              ${fn} q${u(f.name)} = ${r0}(i + 0, f_${fn});
+              ${fn} r${u(f.name)} = ${r0}(i + 4, f_${fn});
+              ${fn} s${u(f.name)} = ${r1}(i * 2 + 0, f_${fn});
+              ${fn} t${u(f.name)} = ${r1}(i * 2 + 4, f_${fn});
+              ${fn} u${u(f.name)} = ${r1}(i * 2 + 8, f_${fn});
+              ${fn} v${u(f.name)} = ${r1}(i * 2 + 12, f_${fn});
 
-              ${wl}_0 = s.x;
-              ${wl}_1 = t.x;
-              ${wl}_2 = u.x;
-              ${wl}_3 = v.x;
-              ${wc}_0 = q.y;
-              ${wc}_1 = q.w;
-              ${wc}_2 = r.y;
-              ${wc}_3 = r.w;
-              ${wr}_0 = s.z;
-              ${wr}_1 = t.z;
-              ${wr}_2 = u.z;
-              ${wr}_3 = v.z;
+              ${wl}_0 = s${u(f.name)}.x;
+              ${wl}_1 = t${u(f.name)}.x;
+              ${wl}_2 = u${u(f.name)}.x;
+              ${wl}_3 = v${u(f.name)}.x;
+              ${wc}_0 = q${u(f.name)}.y;
+              ${wc}_1 = q${u(f.name)}.w;
+              ${wc}_2 = r${u(f.name)}.y;
+              ${wc}_3 = r${u(f.name)}.w;
+              ${wr}_0 = s${u(f.name)}.z;
+              ${wr}_1 = t${u(f.name)}.z;
+              ${wr}_2 = u${u(f.name)}.z;
+              ${wr}_3 = v${u(f.name)}.z;
             `,
             2
           )
@@ -131,17 +126,13 @@ export function scan(kernel: Kernel) {
     for (let i = 0; i < 4; i++) {
       for (let {format, name} of fit.write) {
         let n = name ? name + '_' : ''
-        struct.outRegisters.push({format, name: 's_keepl_' + n + i})
-        struct.outRegisters.push({format, name: 's_copy_' + n + i})
-        struct.outRegisters.push({format, name: 's_keepr_' + n + i})
-        struct.outRegisters.push({format, name: n + i})
+        struct.outRegisters.push({format, attrib: name, name: 's_keepl_' + n + i})
+        struct.outRegisters.push({format, attrib: name, name: 's_copy_' + n + i})
+        struct.outRegisters.push({format, attrib: name, name: 's_keepr_' + n + i})
+        struct.outRegisters.push({format, attrib: name, name: n + i})
       }
     }
-    kernel.programs.down = new Program(
-      template.vs(struct),
-      template.fs(),
-      struct.outRegisters.map((r) => `glc_out_${r.name}`)
-    )
+    kernel.programs.down = new Program(template.vs(struct), template.fs(), Program.tf(struct))
   }
   final: {
     let fit = {read: formatIterator(kernel.read, kernel.scope), write: formatIterator(kernel.write)}
@@ -202,27 +193,32 @@ export function scan(kernel: Kernel) {
     struct.vertexIdMultiplier = 8
 
     struct.outRegisters = []
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 2; i++) {
       for (let {format, name} of fit.write) {
-        let n = name ? name + '_' : ''
-        struct.outRegisters.push({format, name: n + i})
-        struct.outRegisters.push({format, name: 's_copy_' + n + i})
+        for (let j = 0; j < 2; j++) {
+          let n = name ? name + '_' : ''
+          let k = i * 2 + j
+          struct.outRegisters.push({format, attrib: name, name: n + k})
+          struct.outRegisters.push({format, attrib: name, name: 's_copy_' + n + k})
+        }
       }
     }
-    kernel.programs.final = new Program(
-      template.vs(struct),
-      template.fs(),
-      struct.outRegisters.map((r) => `glc_out_${r.name}`)
-    )
+    kernel.programs.final = new Program(template.vs(struct), template.fs(), Program.tf(struct))
   }
   kernel.exec = async (r, read, scope) => {
     let {gl, pool} = gpu
     let n = r.end
+    if (n <= 1) return [await read!.copy()]
+    if (n === 2) {
+      let v2 = await map(kernel.programs.up, range(1), {read, scope, write: kernel.write})
+      let v1 = await read!.slice(0, 1)
+      return [await buffer.concat(v1, v2)]
+    }
     let layers = [read] as Buffer[]
     while (n >= 2) {
       n = Math.ceil(n / 2)
       layers.push(
-        await map(kernel.programs.up.gl!, range(n), {
+        await map(kernel.programs.up, range(n), {
           read: layers[layers.length - 1],
           scope,
           write: kernel.write,
@@ -230,7 +226,7 @@ export function scan(kernel: Kernel) {
       )
     }
     let i = layers.length - 2
-    let next = await map(kernel.programs.insert.gl!, range(2), {
+    let next = await map(kernel.programs.insert, range(2), {
       read: layers[i],
       outputByteLength: layers[i].byteLength,
       write: kernel.write,
@@ -240,7 +236,7 @@ export function scan(kernel: Kernel) {
     for (; i > 0; i--) {
       let l0 = layers[i]
       let l1 = layers[i - 1]
-      let next = await map(kernel.programs.down.gl!, range(Math.ceil(l1.length / 4)), {
+      let next = await map(kernel.programs.down, range(Math.ceil(l1.length / 4)), {
         read: l0,
         scope,
         scope2: l1,
@@ -254,7 +250,7 @@ export function scan(kernel: Kernel) {
     }
     let init = layers[0]
     let last = layers[layers.length - 1]
-    init = await map(kernel.programs.final.gl!, range(r.end), {
+    init = await map(kernel.programs.final, range(r.end), {
       read: init,
       scope,
       outputByteLength: pool.sizeBuffer(kernel.write, r.end * 2),
@@ -279,3 +275,16 @@ export function scan(kernel: Kernel) {
     return [init]
   }
 }
+
+// async function debugScanLayers(layers: Buffer[], key?: string) {
+//   let data = (await Promise.all(layers.map((l) => l.read()))) as number[][]
+//   if (key) data = data.map((d) => d.map((d) => (d as any)[key]))
+//   data.reverse()
+//   let colWidth = Math.ceil(Math.log10(Math.max(...data.flat(2)))) + 1
+//   let maxLen = Math.max(...layers.map((l) => l.length))
+//   let strings = data.map((d) => {
+//     let fullColWidth = Math.floor((colWidth * maxLen) / d.length)
+//     return d.map((d) => (d + '').padStart(fullColWidth)).join('')
+//   })
+//   console.log(strings.join('\n'))
+// }
