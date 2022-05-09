@@ -4,7 +4,12 @@ import format, {ComplexFormat, Format, Null} from './format'
 
 export class Range {
   length: number
-  constructor(public start: number, public end: number, public groupSize: number | null) {
+  constructor(
+    public start: number,
+    public end: number,
+    public groupSize: number | null,
+    public groupCount: number | null
+  ) {
     this.length = end - start
   }
   async map<
@@ -83,7 +88,7 @@ export class Range {
     R extends Format | ComplexFormat | Null,
     W extends typeof format.int,
     S extends ComplexFormat | Null,
-    F0 extends 'start' | 'length' | 'overflow'
+    F0 extends 'groupSize' | 'groupCount'
   >(
     kernel: Kernel<R, W, S>,
     ...input: R extends Format | ComplexFormat
@@ -98,8 +103,8 @@ export class Range {
     R extends Format | ComplexFormat | Null,
     W extends typeof format.int,
     S extends ComplexFormat | Null,
-    F0 extends 'start' | 'length' | 'overflow',
-    F1 extends 'start' | 'length' | 'overflow'
+    F0 extends 'groupSize' | 'groupCount',
+    F1 extends 'groupSize' | 'groupCount'
   >(
     kernel: Kernel<R, W, S>,
     ...input: R extends Format | ComplexFormat
@@ -110,25 +115,6 @@ export class Range {
       ? [scope: Buffer<S>, flag_0: F0, flag_1: F1]
       : [flag_0: F0, flag_1: F1]
   ): Promise<[Buffer<W>, Buffer<typeof format.int>, Buffer<typeof format.int>]>
-  group<
-    R extends Format | ComplexFormat | Null,
-    W extends typeof format.int,
-    S extends ComplexFormat | Null,
-    F0 extends 'start' | 'length' | 'overflow',
-    F1 extends 'start' | 'length' | 'overflow',
-    F2 extends 'start' | 'length' | 'overflow'
-  >(
-    kernel: Kernel<R, W, S>,
-    ...input: R extends Format | ComplexFormat
-      ? S extends ComplexFormat
-        ? [read: Buffer<R>, scope: Buffer<S>, flag_0: F0, flag_1: F1, flag_2: F2]
-        : [read: Buffer<R>, flag_0: F0, flag_1: F1, flag_2: F2]
-      : S extends ComplexFormat
-      ? [scope: Buffer<S>, flag_0: F0, flag_1: F1, flag_2: F2]
-      : [flag_0: F0, flag_1: F1, flag_2: F2]
-  ): Promise<
-    [Buffer<W>, Buffer<typeof format.int>, Buffer<typeof format.int>, Buffer<typeof format.int>]
-  >
   async group(kernel: Kernel, ...buffersAndFlags: any[]) {
     let buffers = [] as Buffer[]
     let flags = [] as string[]
@@ -171,9 +157,8 @@ export class Range {
 }
 
 export function range(end: number): Range
-export function range(start: number, end: number): Range
-export function range(start: number, end: number, groupSize: number): Range
-export function range(start: number, end?: number, groupSize?: number) {
+export function range(start: number, end: number, groupSize?: number, groupCount?: number): Range
+export function range(start: number, end?: number, groupSize?: number, groupCount?: number) {
   if (isNaN(start) || isNaN(end ?? 0)) throw new Error(`Cannot create a range of length "NaN"`)
   if (typeof end !== 'number') {
     end = start
@@ -183,5 +168,5 @@ export function range(start: number, end?: number, groupSize?: number) {
     // TODO: support this
     throw new Error("Support for ranges where start != 0 hasn't been implemented yet")
   }
-  return new Range(start, end, groupSize ?? null)
+  return new Range(start, end, groupSize ?? null, groupCount ?? null)
 }

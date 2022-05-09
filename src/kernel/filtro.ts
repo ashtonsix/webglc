@@ -111,6 +111,7 @@ export function filtro(kernel: Kernel) {
     gl.drawArrays(gl.POINTS, 0, r.length)
     gl.disable(gl.STENCIL_TEST)
 
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.TEXTURE_2D, null, 0)
     gl.bindBuffer(gl.ARRAY_BUFFER, null)
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
     gl.deleteVertexArray(va)

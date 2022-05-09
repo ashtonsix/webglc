@@ -306,3 +306,48 @@ describe('sort', () => {
     }
   })
 })
+
+describe.only('group', () => {
+  async function testGroup(getGroupSize) {
+    let groupByLastDigit = kernel(f.int, f.int)`
+      void group(int i) {
+        write(read(i) % 10);
+      }`
+    for (let i = 0; i < 5; i++) {
+      let data = Array.from({length: ceil(random() * 100)}, () => ceil(random() * 100))
+      let bdata = buffer(f.int, data)
+      let groupSize = getGroupSize()
+      let groupCount = 10
+      bdata = await range(0, bdata.length, groupSize, groupCount).group(groupByLastDigit, bdata)
+      let groups = Array.from({length: groupCount}, () => [])
+      for (let i in data) {
+        let j = data[i] % 10
+        groups[j].push(+i)
+      }
+      data = groups.flatMap((g) =>
+        Object.assign(
+          Array.from({length: groupSize}, () => -1),
+          g
+        ).slice(0, groupSize)
+      )
+      assert.equal(await bdata.read(), data)
+    }
+  }
+  it('should group some numbers (group size = 4)', async () => {
+    await testGroup(() => 4)
+  })
+  it('should group some numbers (group size = any)', async () => {
+    let group = kernel(f.int, f.int)`
+      void group(int i) {
+        write(read(i));
+      }`
+    let data = [0, 0, 0, 0, 0, 1]
+    let bdata = buffer(f.int, data)
+    let groupSize = 8
+    let groupCount = 2
+    bdata = await range(0, bdata.length, groupSize, groupCount).group(group, bdata)
+    let groups = Array.from({length: groupCount}, () => [])
+    assert.equal(await bdata.read(), [0, 1, 2, 3, 4, -1, -1, -1, 5, -1, -1, -1, -1, -1, -1, -1])
+    // testGroup(() => ceil(random() * 100))
+  })
+})

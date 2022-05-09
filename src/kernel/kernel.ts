@@ -1,6 +1,6 @@
 import {Buffer} from '../buffer/buffer'
 import {Range} from '../range'
-import format, {ComplexFormat, Format, formatIterator, formatsMatch, Null} from '../format'
+import format, {ComplexFormat, Format, formatsMatch, Null} from '../format'
 import {gpu} from '../gpu'
 import {finishCompileParallel} from './gl'
 import {extractSourceFragments, validateSourceFragments} from './parse'
@@ -9,6 +9,7 @@ import {filtro} from './filtro'
 import {reduce} from './reduce'
 import {scan} from './scan'
 import {sort} from './sort'
+import {group} from './group'
 import {ProgramModel} from './model'
 
 function compile(kernel: Kernel) {
@@ -31,6 +32,9 @@ function compile(kernel: Kernel) {
     }
     case 'sort': {
       return sort(kernel)
+    }
+    case 'group': {
+      return group(kernel)
     }
   }
 }
@@ -102,10 +106,6 @@ export const kernel = Object.assign(
     write: W,
     scope = format.null as S
   ) => {
-    let components = formatIterator(write).reduce((pv, f) => pv + f.format.components, 0)
-    if (components > 16) {
-      // throw new Error(`Too many components in write format`)
-    }
     return (str: TemplateStringsArray, ...interstices: KernelInclude[]) => {
       let src = str[0]
       for (let i in interstices) {
